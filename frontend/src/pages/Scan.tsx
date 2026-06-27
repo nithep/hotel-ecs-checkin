@@ -8,26 +8,35 @@ const Scan = () => {
   const [status, setStatus] = useState<ScanStatus>('idle');
   const [roomNumber, setRoomNumber] = useState<string | null>(null);
 
-  const handleSimulateScan = () => {
+  const handleSimulateScan = async () => {
     setStatus('scanning');
 
-    // Simulate API call and scan delay
-    setTimeout(() => {
-      const isSuccess = Math.random() > 0.1; // 90% success rate for simulation
+    try {
+      // Call our Backend API (Digital Twin)
+      const response = await fetch('http://localhost:3000/api/checkin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomNumber: '101' })
+      });
 
-      if (isSuccess) {
+      const data = await response.json();
+
+      if (response.ok && data.hardware_status?.success) {
         setRoomNumber('101');
         setStatus('success');
       } else {
         setStatus('error');
       }
-
+    } catch (error) {
+      console.error('Check-in failed:', error);
+      setStatus('error');
+    } finally {
       // Reset after a few seconds
       setTimeout(() => {
         setStatus('idle');
         setRoomNumber(null);
       }, 4000);
-    }, 1500);
+    }
   };
 
   return (
