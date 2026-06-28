@@ -46,6 +46,33 @@ app.post('/api/checkout', (req, res) => {
     });
 });
 
+const fs = require('fs');
+const path = require('path');
+
+// API to serve OKF markdown documents
+app.get('/api/docs', (req, res) => {
+    // If the file parameter has no extension, append .md
+    let filename = req.query.file || 'index.md';
+    if (!filename.endsWith('.md')) {
+        filename += '.md';
+    }
+    
+    const safeFilename = path.basename(filename);
+    let filePath = path.join(__dirname, '..', 'docs', safeFilename);
+    
+    // Check in root docs, if not found, check in docs/concepts
+    if (!fs.existsSync(filePath)) {
+        filePath = path.join(__dirname, '..', 'docs', 'concepts', safeFilename);
+    }
+    
+    if (fs.existsSync(filePath)) {
+        const content = fs.readFileSync(filePath, 'utf8');
+        res.json({ success: true, content });
+    } else {
+        res.status(404).json({ error: 'Document not found' });
+    }
+});
+
 // Start Server
 app.listen(PORT, () => {
     console.log(`\n========================================`);

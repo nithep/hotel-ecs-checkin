@@ -34,6 +34,22 @@ const Layout = () => {
                     transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                   />
                 )}
+                <span className="hidden sm:inline">Presentation</span>
+              </Link>
+
+              <Link
+                to="/dashboard"
+                className={`relative px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                  location.pathname === '/dashboard' ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                {location.pathname === '/dashboard' && (
+                  <motion.div
+                    layoutId="nav-pill"
+                    className="absolute inset-0 bg-slate-800 rounded-md -z-10"
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  />
+                )}
                 <LayoutDashboard size={18} />
                 <span className="hidden sm:inline">Dashboard</span>
               </Link>
@@ -53,6 +69,22 @@ const Layout = () => {
                 )}
                 <QrCode size={18} />
                 <span className="hidden sm:inline">Check-in</span>
+              </Link>
+
+              <Link
+                to="/manual"
+                className={`relative px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                  location.pathname === '/manual' ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                {location.pathname === '/manual' && (
+                  <motion.div
+                    layoutId="nav-pill"
+                    className="absolute inset-0 bg-slate-800 rounded-md -z-10"
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  />
+                )}
+                <span className="hidden sm:inline">Manual</span>
               </Link>
             </nav>
           </div>

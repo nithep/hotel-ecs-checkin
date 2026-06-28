@@ -2,14 +2,18 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Layout from './components/Layout';
 import Dashboard from './pages/Dashboard';
 import Scan from './pages/Scan';
+import Presentation from './pages/Presentation';
+import Manual from './pages/Manual';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Layout />}>
-          <Route index element={<Dashboard />} />
+          <Route index element={<Presentation />} />
+          <Route path="dashboard" element={<Dashboard />} />
           <Route path="scan" element={<Scan />} />
+          <Route path="manual" element={<Manual />} />
         </Route>
       </Routes>
     </BrowserRouter>
