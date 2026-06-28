@@ -15,3 +15,4 @@ timestamp: "2026-06-28T02:00:00+07:00"
 | **2026-06-28** | อัปเดตเอกสาร OKF สรุปโครงสร้าง Frontend หลังจาก Jules พัฒนา UI เสร็จสมบูรณ์ (Initial Frontend Setup) | Librarian (Antigravity) |
 | **2026-06-28** | สร้าง Backend API (Node.js) และ Mock PBX Simulator (Digital Twin) เสร็จสมบูรณ์ | Antigravity |
 | **2026-06-28** | พัฒนา Unified Presentation Web App (รวบรวมวิดีโอ AI, Dashboard, Check-in และ Manual เข้าด้วยกัน) | Antigravity |
+| **2026-06-28** | Phase 5: ติดตั้ง SQLite Database เพื่อจำสถานะห้อง, เพิ่มฟีเจอร์ Check-out, และสร้างโค้ด RS-232 สำหรับใช้งานจริง | Antigravity |

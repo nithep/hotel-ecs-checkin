@@ -1,21 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Zap, ZapOff, Users, UserX, BedDouble } from 'lucide-react';
+import { Zap, ZapOff, Users, UserX, BedDouble, LogOut } from 'lucide-react';
 
 interface Room {
   id: number;
   status: 'occupied' | 'vacant';
   power: boolean;
 }
-
-const mockRooms: Room[] = [
-  { id: 101, status: 'occupied', power: true },
-  { id: 102, status: 'vacant', power: false },
-  { id: 103, status: 'occupied', power: true },
-  { id: 104, status: 'vacant', power: false },
-  { id: 105, status: 'occupied', power: false }, // Occupied but keycard out
-  { id: 106, status: 'vacant', power: false },
-];
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -31,23 +22,42 @@ const itemVariants = {
 };
 
 const Dashboard = () => {
-  const [rooms, setRooms] = useState<Room[]>(mockRooms);
+  const [rooms, setRooms] = useState<Room[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Simulate real-time updates for demonstration
+  const fetchRooms = async () => {
+    try {
+      const res = await fetch('http://localhost:3000/api/rooms');
+      const data = await res.json();
+      if (data.success) {
+        setRooms(data.rooms);
+      }
+    } catch (error) {
+      console.error("Failed to fetch rooms", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const interval = setInterval(() => {
-      setRooms((current) =>
-        current.map((room) => {
-          // Randomly flip power for one occupied room occasionally
-          if (room.id === 105 && Math.random() > 0.7) {
-            return { ...room, power: !room.power };
-          }
-          return room;
-        })
-      );
-    }, 5000);
+    fetchRooms();
+    // Poll every 5 seconds for real-time updates
+    const interval = setInterval(fetchRooms, 5000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleCheckout = async (roomId: number) => {
+    try {
+      await fetch('http://localhost:3000/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomNumber: roomId })
+      });
+      fetchRooms(); // Refresh UI immediately
+    } catch (error) {
+      console.error("Checkout failed", error);
+    }
+  };
 
   const stats = {
     total: rooms.length,
@@ -55,6 +65,10 @@ const Dashboard = () => {
     vacant: rooms.filter((r) => r.status === 'vacant').length,
     powerOn: rooms.filter((r) => r.power).length,
   };
+
+  if (isLoading) {
+    return <div className="text-white">Loading room statuses...</div>;
+  }
 
   return (
     <div className="space-y-8">
@@ -111,7 +125,7 @@ const Dashboard = () => {
               key={room.id}
               variants={itemVariants}
               layout
-              className="bg-hotel-card rounded-2xl p-5 border border-slate-800 hover:border-slate-700 transition-colors relative overflow-hidden group"
+              className="bg-hotel-card rounded-2xl p-5 border border-slate-800 hover:border-slate-700 transition-colors relative overflow-hidden group flex flex-col justify-between min-h-[220px]"
             >
               {/* Background gradient hint */}
               <div
@@ -120,7 +134,7 @@ const Dashboard = () => {
                 }`}
               />
 
-              <div className="flex justify-between items-start mb-6">
+              <div className="flex justify-between items-start mb-4">
                 <div>
                   <h3 className="text-2xl font-bold text-white mb-1">
                     {room.id}
@@ -158,12 +172,12 @@ const Dashboard = () => {
                 </motion.div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2 mt-4 pt-4 border-t border-slate-800">
+              <div className="grid grid-cols-2 gap-2 mt-auto pt-4 border-t border-slate-800">
                 <div className="flex flex-col">
                   <span className="text-xs text-slate-500 uppercase font-semibold mb-1">Guest</span>
                   {room.status === 'occupied' ? (
                     <div className="flex items-center gap-1 text-sm text-slate-300">
-                      <Users size={14} /> Checked In
+                      <Users size={14} /> In Room
                     </div>
                   ) : (
                     <div className="flex items-center gap-1 text-sm text-slate-600">
@@ -171,15 +185,16 @@ const Dashboard = () => {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-col">
-                  <span className="text-xs text-slate-500 uppercase font-semibold mb-1">Relay</span>
-                  <div
-                    className={`text-sm font-medium ${
-                      room.power ? 'text-hotel-accent' : 'text-slate-600'
-                    }`}
-                  >
-                    {room.power ? 'Active (220V)' : 'Cut-off'}
-                  </div>
+                
+                <div className="flex flex-col items-end">
+                  {room.status === 'occupied' && (
+                    <button
+                      onClick={() => handleCheckout(room.id)}
+                      className="flex items-center gap-1 bg-red-500/10 hover:bg-red-500/20 text-red-500 text-xs px-3 py-1.5 rounded-lg transition-colors border border-red-500/20"
+                    >
+                      <LogOut size={14} /> Checkout
+                    </button>
+                  )}
                 </div>
               </div>
             </motion.div>
@@ -191,3 +206,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+

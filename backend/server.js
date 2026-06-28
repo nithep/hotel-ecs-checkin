@@ -9,7 +9,16 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
-// API Routes
+const db = require('./db');
+
+// Get all rooms from Database
+app.get('/api/rooms', (req, res) => {
+    db.getAllRooms((err, rooms) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, rooms });
+    });
+});
+
 app.post('/api/checkin', (req, res) => {
     const { roomNumber } = req.body;
     
@@ -20,11 +29,16 @@ app.post('/api/checkin', (req, res) => {
     console.log(`[API] Received Check-in Request for Room: ${roomNumber}`);
     
     // Call the Mock PBX (Digital Twin) to turn ON the relay
-    const result = pbx.turnOnRelay(roomNumber);
+    const hardwareResult = pbx.turnOnRelay(roomNumber);
     
-    res.json({
-        message: 'Check-in successful',
-        hardware_status: result
+    // Persist to Database
+    db.updateRoomState(roomNumber, 'occupied', true, (err) => {
+        if (err) return res.status(500).json({ error: 'Database update failed' });
+        
+        res.json({
+            message: 'Check-in successful',
+            hardware_status: hardwareResult
+        });
     });
 });
 
@@ -38,11 +52,16 @@ app.post('/api/checkout', (req, res) => {
     console.log(`[API] Received Check-out Request for Room: ${roomNumber}`);
     
     // Call the Mock PBX (Digital Twin) to turn OFF the relay
-    const result = pbx.turnOffRelay(roomNumber);
+    const hardwareResult = pbx.turnOffRelay(roomNumber);
     
-    res.json({
-        message: 'Check-out successful',
-        hardware_status: result
+    // Persist to Database
+    db.updateRoomState(roomNumber, 'vacant', false, (err) => {
+        if (err) return res.status(500).json({ error: 'Database update failed' });
+        
+        res.json({
+            message: 'Check-out successful',
+            hardware_status: hardwareResult
+        });
     });
 });
 

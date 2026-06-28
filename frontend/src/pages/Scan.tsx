@@ -39,11 +39,40 @@ const Scan = () => {
     }
   };
 
+  const handleSimulateCheckout = async () => {
+    setStatus('scanning');
+
+    try {
+      const response = await fetch('http://localhost:3000/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomNumber: '101' })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.hardware_status?.success) {
+        setRoomNumber('101');
+        setStatus('success'); // Reusing success UI but we could customize it for checkout
+      } else {
+        setStatus('error');
+      }
+    } catch (error) {
+      console.error('Check-out failed:', error);
+      setStatus('error');
+    } finally {
+      setTimeout(() => {
+        setStatus('idle');
+        setRoomNumber(null);
+      }, 4000);
+    }
+  };
+
   return (
     <div className="max-w-md mx-auto flex flex-col items-center justify-center min-h-[70vh]">
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2">Self Check-in</h1>
-        <p className="text-slate-400">Scan your booking QR code to unlock your room and activate power.</p>
+        <h1 className="text-3xl font-bold mb-2">Self Check-in / Out</h1>
+        <p className="text-slate-400">Scan your booking QR code to unlock your room or check out.</p>
       </div>
 
       {/* Scanner Mock UI */}
@@ -98,9 +127,8 @@ const Scan = () => {
               >
                 <CheckCircle2 size={48} />
               </motion.div>
-              <h3 className="text-2xl font-bold text-hotel-success mb-1">Check-in Complete</h3>
-              <p className="text-slate-300">Room {roomNumber} is ready.</p>
-              <p className="text-sm text-slate-400 mt-1">Power relay activated.</p>
+              <h3 className="text-2xl font-bold text-hotel-success mb-1">Action Complete</h3>
+              <p className="text-slate-300">Room {roomNumber} processed.</p>
             </motion.div>
           )}
 
@@ -133,14 +161,24 @@ const Scan = () => {
         <div className="absolute bottom-4 right-4 w-8 h-8 border-b-4 border-r-4 border-slate-600 rounded-br-lg pointer-events-none group-hover:border-hotel-accent transition-colors" />
       </div>
 
-      <button
-        onClick={handleSimulateScan}
-        disabled={status !== 'idle'}
-        className="px-8 py-4 bg-hotel-accent hover:bg-blue-600 text-white rounded-xl font-semibold text-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-hotel-accent/20 flex items-center gap-2"
-      >
-        <ScanLine size={20} />
-        {status === 'idle' ? 'Simulate Scan' : 'Processing...'}
-      </button>
+      <div className="flex gap-4">
+        <button
+          onClick={handleSimulateScan}
+          disabled={status !== 'idle'}
+          className="px-6 py-3 bg-hotel-accent hover:bg-blue-600 text-white rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center gap-2"
+        >
+          <ScanLine size={18} />
+          Check-in
+        </button>
+        <button
+          onClick={handleSimulateCheckout}
+          disabled={status !== 'idle'}
+          className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-semibold text-sm transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg flex items-center gap-2"
+        >
+          <XCircle size={18} />
+          Check-out
+        </button>
+      </div>
     </div>
   );
 };
