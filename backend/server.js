@@ -185,10 +185,21 @@ async function startServer() {
         console.warn(`[PBX] ⚠️ PBX connection failed: ${err.message} — server will start anyway`);
     }
 
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
+        const os = require('os');
+        const nets = os.networkInterfaces();
+        let localIP = 'unknown';
+        for (const name of Object.keys(nets)) {
+            for (const net of nets[name]) {
+                if (net.family === 'IPv4' && !net.internal) {
+                    localIP = net.address;
+                }
+            }
+        }
         console.log(`\n========================================`);
         console.log(`🚀 Backend API Server running on port ${PORT}`);
         console.log(`🔧 PBX Mode: ${PBX_MODE}`);
+        console.log(`🌐 Access from browser: http://${localIP}:${PORT}`);
         console.log(`========================================\n`);
     });
 }
