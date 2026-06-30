@@ -12,7 +12,7 @@ const Manual = () => {
 
   const fetchDoc = async (filename: string) => {
     try {
-      const res = await fetch(`http://localhost:3000/api/docs?file=${filename}`);
+      const res = await fetch(`/api/docs?file=${filename}`);
       const data = await res.json();
       if (data.success) {
         setContent(data.content);

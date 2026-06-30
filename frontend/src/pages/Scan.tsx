@@ -13,7 +13,7 @@ const Scan = () => {
 
     try {
       // Call our Backend API (Digital Twin)
-      const response = await fetch('http://localhost:3000/api/checkin', {
+      const response = await fetch('/api/checkin', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomNumber: '101' })
@@ -43,7 +43,7 @@ const Scan = () => {
     setStatus('scanning');
 
     try {
-      const response = await fetch('http://localhost:3000/api/checkout', {
+      const response = await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomNumber: '101' })

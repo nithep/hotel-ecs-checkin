@@ -166,6 +166,14 @@ app.get('/api/docs', (req, res) => {
     }
 });
 
+// Serve Frontend Static Files
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
+// React Router Fallback
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
+
 // Start Server — connect PBX first, then listen
 async function startServer() {
     try {

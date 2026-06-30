@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Zap, ZapOff, Users, UserX, BedDouble, LogOut } from 'lucide-react';
-
+import TerminalStatus from '../components/TerminalStatus';
 interface Room {
   id: number;
   status: 'occupied' | 'vacant';
@@ -27,7 +27,7 @@ const Dashboard = () => {
 
   const fetchRooms = async () => {
     try {
-      const res = await fetch('http://localhost:3000/api/rooms');
+      const res = await fetch('/api/rooms');
       const data = await res.json();
       if (data.success) {
         setRooms(data.rooms);
@@ -48,7 +48,7 @@ const Dashboard = () => {
 
   const handleCheckout = async (roomId: number) => {
     try {
-      await fetch('http://localhost:3000/api/checkout', {
+      await fetch('/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomNumber: roomId })
@@ -201,6 +201,12 @@ const Dashboard = () => {
           ))}
         </AnimatePresence>
       </motion.div>
+
+      {/* Server Status Terminal */}
+      <div className="mt-12">
+        <h2 className="text-xl font-bold text-slate-300 mb-4">System Console</h2>
+        <TerminalStatus />
+      </div>
     </div>
   );
 };
