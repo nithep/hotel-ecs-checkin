@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { createConnector } = require('../pbx-connector');
@@ -170,7 +171,7 @@ app.get('/api/docs', (req, res) => {
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
 // React Router Fallback
-app.get('*', (req, res) => {
+app.use((req, res) => {
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 

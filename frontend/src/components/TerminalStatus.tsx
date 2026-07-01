@@ -5,9 +5,9 @@ const TerminalStatus = () => {
   const [blink, setBlink] = useState(true);
   const [uptime, setUptime] = useState(0);
   const [logs, setLogs] = useState<string[]>([
-    "[PM2] Starting /home/admin/excited-newton/backend/server.js in fork_mode",
+    "[PM2] Starting /home/admin/RelaySync/backend/server.js in fork_mode",
     "[PM2] Done.",
-    "[PM2] Starting /home/admin/excited-newton/pbx-connector/index.js in fork_mode",
+    "[PM2] Starting /home/admin/RelaySync/pbx-connector/index.js in fork_mode",
     "[PM2] Done.",
   ]);
 
@@ -50,7 +50,7 @@ const TerminalStatus = () => {
           <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
           <div className="w-3 h-3 rounded-full bg-green-500"></div>
         </div>
-        <div className="text-slate-400 text-xs ml-2">admin@center-node: ~/excited-newton</div>
+        <div className="text-slate-400 text-xs ml-2">admin@center-node: ~/RelaySync</div>
       </div>
 
       {/* Terminal Body */}
