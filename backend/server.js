@@ -1,7 +1,14 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { randomUUID } = require('crypto');
 const { createConnector } = require('../pbx-connector');
+
+// ─── Services ──────────────────────────────────────────────────────────────
+const { ApprovalGate } = require('./services/approval_gate');
+const { initAuditLog, appendAuditEvent, listAuditEvents } = require('./services/audit_log');
+const { RateLimiter } = require('./services/rate_limiter');
+const { TelegramBotService } = require('./services/telegram_bot');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,19 +29,160 @@ const pbx = createConnector({
 pbx.on('checkin', (data) => console.log(`[PBX] ✅ Check-in:`, data));
 pbx.on('checkout', (data) => console.log(`[PBX] 🔴 Check-out:`, data));
 pbx.on('heartbeat', () => console.log(`[PBX] 💓 Heartbeat OK`));
-pbx.on('connection_lost', () => console.log(`[PBX] ⚠️ Connection lost!`));
+pbx.on('connection_lost', () => {
+    console.log(`[PBX] ⚠️ Connection lost!`);
+    if (telegramBot) telegramBot.sendSystemAlert('Connection Lost', 'การเชื่อมต่อกับตู้สาขา PBX ขาดหาย!');
+});
 pbx.on('reconnecting', (d) => console.log(`[PBX] 🔄 Reconnecting (${d.attempt}/${d.maxAttempts})...`));
 pbx.on('reconnected', () => {
     console.log(`[PBX] ✅ Reconnected!`);
+    if (telegramBot) telegramBot.sendSystemAlert('Connection Restored', 'เชื่อมต่อกับตู้สาขา PBX สำเร็จแล้ว');
     syncPbxStateWithDatabase();
 });
-pbx.on('error', (err) => console.error(`[PBX] ❌ Error:`, err.message));
+pbx.on('error', (err) => {
+    console.error(`[PBX] ❌ Error:`, err.message);
+    if (telegramBot) telegramBot.sendSystemAlert('PBX Error', err.message);
+});
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 
 const db = require('./db');
+
+// ─── Initialize Safety Services ───────────────────────────────────────────
+const gate = new ApprovalGate({
+    approvalTtlMs: 60 * 1000,       // Approval หมดอายุใน 60 วินาที
+    pendingTtlMs: 10 * 60 * 1000,   // Pending request หมดอายุใน 10 นาที
+    enforceSchedule: process.env.ENFORCE_SCHEDULE !== 'false',
+    scheduleStart: '06:00',
+    scheduleEnd: '00:00',
+});
+
+const rateLimiter = new RateLimiter({
+    maxCommands: 3,    // ≤ 3 cmd/min/room
+    windowMs: 60000,
+});
+
+// Initialize Audit Log table
+initAuditLog(db.db);
+console.log('[SAFETY] ✅ Approval Gate, Audit Log, Rate Limiter initialized');
+
+// Initialize Telegram Bot Service
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_ID = process.env.TELEGRAM_CHAT_ID;
+let telegramBot = null;
+
+if (TELEGRAM_BOT_TOKEN) {
+    telegramBot = new TelegramBotService({
+        token: TELEGRAM_BOT_TOKEN,
+        chatId: TELEGRAM_CHAT_ID,
+        gate,
+        pbx,
+        rateLimiter,
+        db: db.db,
+        appendAuditEvent,
+    });
+    telegramBot.start();
+}
+
+
+// ─── Helper: Build command object for classification ──────────────────────
+function buildCommand(commandType, roomNumber, options = {}) {
+    const targetRooms = roomNumber === '*'
+        ? ['*']
+        : Array.isArray(roomNumber) ? roomNumber.map(String) : [String(roomNumber)];
+
+    return {
+        traceId: randomUUID(),
+        commandType,
+        targetRooms,
+        requestedBy: options.requestedBy || 'user:frontend',
+        source: options.source || 'unknown',
+        dryRun: options.dryRun || false,
+        executionMode: PBX_MODE,
+        guestName: options.guestName || null,
+        metadata: {
+            flow: options.flow || null,
+            reason: options.reason || null,
+        },
+    };
+}
+
+// ─── Helper: Execute command through safety pipeline ──────────────────────
+async function executeWithSafety(command, executeFn) {
+    const now = new Date();
+
+    // 1. Rate Limiter — ตรวจสอบทุกห้องที่ได้รับผลกระทบ
+    for (const room of command.targetRooms) {
+        if (room === '*') continue; // all-room จะถูก gate บล็อกอยู่แล้ว
+        const rateResult = rateLimiter.check(room, now);
+        if (!rateResult.allowed) {
+            return {
+                blocked: true,
+                reason: 'RATE_LIMITED',
+                message: `ห้อง ${room} ส่งคำสั่งเกินขีดจำกัด (${rateLimiter.maxCommands} ครั้ง/นาที)`,
+                resetAt: rateResult.resetAt,
+            };
+        }
+    }
+
+    // 2. Approval Gate — จำแนกระดับความเสี่ยง
+    const classification = gate.classify(command, now);
+
+    if (classification.requiresApproval) {
+        // High-risk: สร้าง pending approval
+        const pending = gate.requestApproval(command, classification, now);
+
+        // Log APPROVAL_REQUESTED
+        await appendAuditEvent(db.db, {
+            traceId: command.traceId,
+            eventType: 'APPROVAL_REQUESTED',
+            command: { ...command, riskCode: classification.riskCode },
+        });
+
+        // Trigger Telegram Approval Notification
+        if (telegramBot) {
+            telegramBot.sendApprovalRequest(pending).catch(err => {
+                console.error('[TELEGRAM] Error sending approval request:', err.message);
+            });
+        }
+
+        return {
+            blocked: true,
+            reason: 'APPROVAL_REQUIRED',
+            approvalId: pending.approvalId,
+            classification,
+            message: `คำสั่งเสี่ยงสูง (${classification.riskCode}: ${classification.riskName}) — ต้องได้รับอนุมัติจากแอดมินก่อน`,
+        };
+    }
+
+    // 3. AUTO_PASSED — คำสั่ง low-risk ผ่านอัตโนมัติ แต่ต้อง log ทุกครั้ง
+    await appendAuditEvent(db.db, {
+        traceId: command.traceId,
+        eventType: 'AUTO_PASSED',
+        command: { ...command, riskCode: null },
+    });
+
+    // 4. If dryRun, skip rate limiter record and physical execute
+    if (command.dryRun) {
+        return {
+            blocked: false,
+            dryRun: true,
+            result: { success: true, status: 'DRY_RUN_PASSED', message: 'คำสั่งผ่านการตรวจสอบความปลอดภัยเรียบร้อยแล้ว (ไม่ได้ยิงจริง)' }
+        };
+    }
+
+    // 5. Record ลง Rate Limiter
+    for (const room of command.targetRooms) {
+        if (room === '*') continue;
+        rateLimiter.record(room, now);
+    }
+
+    // 6. Execute
+    const result = await executeFn();
+    return { blocked: false, result };
+}
 
 // ─── State Synchronization ────────────────────────────────────────────────
 function syncPbxStateWithDatabase() {
@@ -66,6 +214,10 @@ function syncPbxStateWithDatabase() {
     });
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// API Routes
+// ═══════════════════════════════════════════════════════════════════════════
+
 // Get all rooms from Database
 app.get('/api/rooms', (req, res) => {
     db.getAllRooms((err, rooms) => {
@@ -74,26 +226,50 @@ app.get('/api/rooms', (req, res) => {
     });
 });
 
+// ─── Check-in (ผ่าน Safety Pipeline) ──────────────────────────────────────
 app.post('/api/checkin', async (req, res) => {
-    const { roomNumber, guestName } = req.body;
+    const { roomNumber, guestName, dryRun, dry_run } = req.body;
     
     if (!roomNumber) {
         return res.status(400).json({ error: 'roomNumber is required' });
     }
 
-    console.log(`[API] Received Check-in Request for Room: ${roomNumber}`);
-    
+    console.log(`[API] Received Check-in Request for Room: ${roomNumber} (Dry-run: ${Boolean(dryRun || dry_run)})`);
+
+    const command = buildCommand('ROOM_ON', roomNumber, {
+        source: 'checkin_flow',
+        flow: 'checkin',
+        guestName,
+        dryRun: Boolean(dryRun || dry_run),
+    });
+
     try {
-        // Send ON command to PBX (with retry logic built-in)
-        const hardwareResult = await pbx.checkIn(roomNumber, guestName);
-        
+        const safetyResult = await executeWithSafety(command, async () => {
+            const hardwareResult = await pbx.checkIn(roomNumber, guestName);
+            return hardwareResult;
+        });
+
+        if (safetyResult.blocked) {
+            const statusCode = safetyResult.reason === 'RATE_LIMITED' ? 429 : 202;
+            return res.status(statusCode).json(safetyResult);
+        }
+
+        if (safetyResult.dryRun) {
+            return res.json({
+                message: 'Check-in (Dry-run) successful',
+                trace_id: command.traceId,
+                hardware_status: safetyResult.result,
+            });
+        }
+
         // Persist to Database
         db.updateRoomState(roomNumber, 'occupied', true, (err) => {
             if (err) return res.status(500).json({ error: 'Database update failed' });
             
             res.json({
                 message: 'Check-in successful',
-                hardware_status: hardwareResult
+                trace_id: command.traceId,
+                hardware_status: safetyResult.result,
             });
         });
     } catch (err) {
@@ -102,26 +278,49 @@ app.post('/api/checkin', async (req, res) => {
     }
 });
 
+// ─── Check-out (ผ่าน Safety Pipeline) ─────────────────────────────────────
 app.post('/api/checkout', async (req, res) => {
-    const { roomNumber } = req.body;
+    const { roomNumber, dryRun, dry_run } = req.body;
     
     if (!roomNumber) {
         return res.status(400).json({ error: 'roomNumber is required' });
     }
 
-    console.log(`[API] Received Check-out Request for Room: ${roomNumber}`);
-    
+    console.log(`[API] Received Check-out Request for Room: ${roomNumber} (Dry-run: ${Boolean(dryRun || dry_run)})`);
+
+    const command = buildCommand('ROOM_OFF', roomNumber, {
+        source: 'checkout_flow',
+        flow: 'checkout',
+        dryRun: Boolean(dryRun || dry_run),
+    });
+
     try {
-        // Send OFF command to PBX (with retry logic built-in)
-        const hardwareResult = await pbx.checkOut(roomNumber);
-        
+        const safetyResult = await executeWithSafety(command, async () => {
+            const hardwareResult = await pbx.checkOut(roomNumber);
+            return hardwareResult;
+        });
+
+        if (safetyResult.blocked) {
+            const statusCode = safetyResult.reason === 'RATE_LIMITED' ? 429 : 202;
+            return res.status(statusCode).json(safetyResult);
+        }
+
+        if (safetyResult.dryRun) {
+            return res.json({
+                message: 'Check-out (Dry-run) successful',
+                trace_id: command.traceId,
+                hardware_status: safetyResult.result,
+            });
+        }
+
         // Persist to Database
         db.updateRoomState(roomNumber, 'vacant', false, (err) => {
             if (err) return res.status(500).json({ error: 'Database update failed' });
             
             res.json({
                 message: 'Check-out successful',
-                hardware_status: hardwareResult
+                trace_id: command.traceId,
+                hardware_status: safetyResult.result,
             });
         });
     } catch (err) {
@@ -139,6 +338,255 @@ app.get('/api/rooms/:id/status', async (req, res) => {
         res.status(500).json({ error: err.message });
     }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Admin Approval Routes (/admin/approval)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ดึงรายการคำสั่งที่รอ approval
+app.get('/api/admin/approval', (req, res) => {
+    try {
+        const pending = gate.listPending();
+        res.json({ success: true, pending });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ดึงรายละเอียดคำสั่งเฉพาะตัว
+app.get('/api/admin/approval/:id', (req, res) => {
+    const record = gate.get(req.params.id);
+    if (!record) {
+        return res.status(404).json({ error: 'Approval request not found' });
+    }
+    res.json({ success: true, approval: record });
+});
+
+// Admin กด Approve
+app.post('/api/admin/approval/:id/approve', async (req, res) => {
+    const { reason, decidedBy } = req.body;
+
+    if (!reason || !String(reason).trim()) {
+        return res.status(400).json({ error: 'reason is required' });
+    }
+
+    try {
+        const record = gate.approve(req.params.id, {
+            reason,
+            decidedBy: decidedBy || `admin:${req.ip}`,
+            ipAddress: req.ip,
+        });
+
+        // Log APPROVED event
+        await appendAuditEvent(db.db, {
+            traceId: record.command.traceId,
+            eventType: 'APPROVED',
+            command: { ...record.command, riskCode: record.classification.riskCode },
+            approval: {
+                decided_by: record.decidedBy,
+                decided_at: record.decidedAt,
+                reason: record.reason,
+                ip_address: record.ipAddress,
+            },
+            expiry: {
+                approved_at: record.approvedAt,
+                expires_at: record.approvalExpiresAt,
+                executed_at: null,
+                expired: false,
+            },
+        });
+
+        res.json({
+            success: true,
+            message: 'อนุมัติแล้ว — คำสั่งจะหมดอายุใน 60 วินาที',
+            approval: gate.serialize(record),
+        });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// Admin กด Reject
+app.post('/api/admin/approval/:id/reject', async (req, res) => {
+    const { reason, decidedBy } = req.body;
+
+    if (!reason || !String(reason).trim()) {
+        return res.status(400).json({ error: 'reason is required' });
+    }
+
+    try {
+        const record = gate.reject(req.params.id, {
+            reason,
+            decidedBy: decidedBy || `admin:${req.ip}`,
+            ipAddress: req.ip,
+        });
+
+        // Log REJECTED event
+        await appendAuditEvent(db.db, {
+            traceId: record.command.traceId,
+            eventType: 'REJECTED',
+            command: { ...record.command, riskCode: record.classification.riskCode },
+            approval: {
+                decided_by: record.decidedBy,
+                decided_at: record.decidedAt,
+                reason: record.reason,
+                ip_address: record.ipAddress,
+            },
+        });
+
+        res.json({
+            success: true,
+            message: 'คำสั่งถูกปฏิเสธ',
+            approval: gate.serialize(record),
+        });
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// Execute คำสั่งที่ได้รับอนุมัติแล้ว (ภายใน 60 วินาที)
+app.post('/api/admin/approval/:id/execute', async (req, res) => {
+    try {
+        const record = gate.consumeApproved(req.params.id);
+        const command = record.command;
+
+        // Rate Limiter check อีกรอบก่อนยิงจริง
+        for (const room of command.targetRooms) {
+            if (room === '*') continue;
+            const rateResult = rateLimiter.check(room);
+            if (!rateResult.allowed) {
+                return res.status(429).json({
+                    error: `ห้อง ${room} ส่งคำสั่งเกินขีดจำกัด`,
+                    resetAt: rateResult.resetAt,
+                });
+            }
+        }
+
+        // Execute PBX command
+        let hardwareResult;
+        if (command.commandType === 'ROOM_ON' || command.commandType === 'ALL_ROOM_ON') {
+            for (const room of command.targetRooms) {
+                hardwareResult = await pbx.checkIn(room, command.guestName);
+                rateLimiter.record(room);
+            }
+        } else if (command.commandType === 'ROOM_OFF' || command.commandType === 'ALL_ROOM_OFF') {
+            for (const room of command.targetRooms) {
+                hardwareResult = await pbx.checkOut(room);
+                rateLimiter.record(room);
+            }
+        }
+
+        // Mark as executed
+        gate.markExecuted(req.params.id);
+
+        // Log execution
+        await appendAuditEvent(db.db, {
+            traceId: command.traceId,
+            eventType: 'APPROVED',
+            command: { ...command, riskCode: record.classification.riskCode },
+            expiry: {
+                approved_at: record.approvedAt,
+                expires_at: record.approvalExpiresAt,
+                executed_at: new Date().toISOString(),
+                expired: false,
+            },
+            result: { hardware: hardwareResult },
+        });
+
+        res.json({
+            success: true,
+            message: 'คำสั่งถูกดำเนินการแล้ว',
+            trace_id: command.traceId,
+            hardware_status: hardwareResult,
+        });
+    } catch (err) {
+        // ถ้า approval หมดอายุ → log EXPIRED
+        if (err.message.includes('expired')) {
+            await appendAuditEvent(db.db, {
+                traceId: req.params.id,
+                eventType: 'EXPIRED',
+                command: { commandType: 'UNKNOWN', targetRooms: [] },
+            }).catch(() => {});
+        }
+        res.status(400).json({ error: err.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Audit Log Routes
+// ═══════════════════════════════════════════════════════════════════════════
+
+app.get('/api/audit/events', async (req, res) => {
+    try {
+        const events = await listAuditEvents(db.db, {
+            traceId: req.query.trace_id,
+            eventType: req.query.event_type,
+            commandType: req.query.command_type,
+            limit: req.query.limit,
+        });
+        res.json({ success: true, events });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Telemetry & SSE Stream (/api/telemetry/stream)
+// ═══════════════════════════════════════════════════════════════════════════
+const os = require('os');
+let sseClients = [];
+
+app.get('/api/telemetry/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders(); // flush headers to establish connection
+
+    const clientId = Date.now();
+    sseClients.push({ id: clientId, res });
+
+    res.write(`data: ${JSON.stringify({ type: 'sys', message: 'SSE Connection Established' })}\n\n`);
+
+    req.on('close', () => {
+        sseClients = sseClients.filter(c => c.id !== clientId);
+    });
+});
+
+function broadcastTelemetry(type, data) {
+    if (sseClients.length === 0) return;
+    const payload = `data: ${JSON.stringify({ type, data })}\n\n`;
+    sseClients.forEach(client => client.res.write(payload));
+}
+
+// Bind PBX events to SSE
+pbx.on('checkin', (data) => broadcastTelemetry('pbx', `✅ Check-in: Room ${data.roomNumber || data.room}`));
+pbx.on('checkout', (data) => broadcastTelemetry('pbx', `🔴 Check-out: Room ${data.roomNumber || data.room}`));
+pbx.on('heartbeat', () => broadcastTelemetry('pbx', `💓 Heartbeat OK`));
+pbx.on('connection_lost', () => broadcastTelemetry('sys', `⚠️ PBX Connection lost!`));
+pbx.on('reconnected', () => broadcastTelemetry('sys', `✅ PBX Reconnected!`));
+pbx.on('error', (err) => broadcastTelemetry('pbx', `❌ Error: ${err.message}`));
+
+// Periodically send CPU/RAM metrics
+setInterval(() => {
+    const cpuLoad = os.loadavg()[0]; 
+    const cpus = os.cpus().length;
+    const cpuPercent = Math.min((cpuLoad / cpus) * 100, 100).toFixed(1); 
+    
+    const totalMem = os.totalmem();
+    const freeMem = os.freemem();
+    const ramPercent = (((totalMem - freeMem) / totalMem) * 100).toFixed(1);
+
+    broadcastTelemetry('metrics', {
+        cpu: parseFloat(cpuPercent),
+        ram: parseFloat(ramPercent),
+        wlanDown: (Math.random() * 0.5).toFixed(3), // Simulated network
+        wlanUp: (Math.random() * 0.1).toFixed(3),
+    });
+}, 3000);
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Docs & Static Files
+// ═══════════════════════════════════════════════════════════════════════════
 
 const fs = require('fs');
 const path = require('path');
@@ -200,6 +648,7 @@ async function startServer() {
         console.log(`\n========================================`);
         console.log(`🚀 Backend API Server running on port ${PORT}`);
         console.log(`🔧 PBX Mode: ${PBX_MODE}`);
+        console.log(`🛡️  Safety: Approval Gate + Audit Log + Rate Limiter`);
         console.log(`🌐 Access from browser: http://${localIP}:${PORT}`);
         console.log(`========================================\n`);
     });

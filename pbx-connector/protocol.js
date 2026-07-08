@@ -338,7 +338,10 @@ function parseResponse(rawString) {
   }
 
   // Strip terminators and whitespace
-  const line = rawString.replace(/\r?\n/g, '').trim();
+  let line = rawString.replace(/\r?\n/g, '').trim();
+
+  // Strip leading dots (prompts) left in the buffer from PBX greetings
+  line = line.replace(/^\.+/, '');
 
   // ── NACK ──
   if (line === NACK) {

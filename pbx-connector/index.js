@@ -39,6 +39,8 @@ const protocol = require('./protocol');
 const { TcpTransport } = require('./transport/tcp');
 const { SerialTransport } = require('./transport/serial');
 const { CommandQueue } = require('./queue');
+const { logger } = require('./logger');
+
 
 // ─── Default Configuration ────────────────────────────────────────────────────
 
@@ -427,8 +429,8 @@ class PbxConnector extends EventEmitter {
   async checkIn(room, guestName) {
     return this._queue.add(async () => {
       this._ensureReady();
-
       const normalizedRoom = protocol.normalizeRoom(room);
+      logger.info(`Starting Check-in pipeline for room ${normalizedRoom}`, { roomNo: normalizedRoom, commandType: 'ROOM_ON' });
 
       // Set room ON
       const roomCmd = protocol.buildSetRoom(room, protocol.ROOM_STATUS.ON);
@@ -436,7 +438,9 @@ class PbxConnector extends EventEmitter {
       const roomParsed = protocol.parseResponse(roomResp);
 
       if (roomParsed.error) {
-        throw new Error(`Check-in failed for room ${normalizedRoom}: ${roomParsed.errorMessage}`);
+        const errStr = `Check-in failed for room ${normalizedRoom}: ${roomParsed.errorMessage}`;
+        logger.error(errStr, { roomNo: normalizedRoom, commandType: 'ROOM_ON' });
+        throw new Error(errStr);
       }
 
       const result = {
@@ -459,11 +463,7 @@ class PbxConnector extends EventEmitter {
         }
       }
 
-      /**
-       * Check-in สำเร็จ
-       * @event PbxConnector#checkin
-       * @type {Object}
-       */
+      logger.info(`Check-in succeeded for room ${normalizedRoom}`, { roomNo: normalizedRoom, commandType: 'ROOM_ON' });
       this.emit('checkin', result);
 
       return result;
@@ -484,8 +484,8 @@ class PbxConnector extends EventEmitter {
   async checkOut(room) {
     return this._queue.add(async () => {
       this._ensureReady();
-
       const normalizedRoom = protocol.normalizeRoom(room);
+      logger.info(`Starting Check-out pipeline for room ${normalizedRoom}`, { roomNo: normalizedRoom, commandType: 'ROOM_OFF' });
 
       // Clear guest name first
       try {
@@ -501,8 +501,11 @@ class PbxConnector extends EventEmitter {
       const roomParsed = protocol.parseResponse(roomResp);
 
       if (roomParsed.error) {
-        throw new Error(`Check-out failed for room ${normalizedRoom}: ${roomParsed.errorMessage}`);
+        const errStr = `Check-out failed for room ${normalizedRoom}: ${roomParsed.errorMessage}`;
+        logger.error(errStr, { roomNo: normalizedRoom, commandType: 'ROOM_OFF' });
+        throw new Error(errStr);
       }
+
 
       const result = {
         success: true,
@@ -510,11 +513,7 @@ class PbxConnector extends EventEmitter {
         status: protocol.ROOM_STATUS_LABEL[protocol.ROOM_STATUS.OFF],
       };
 
-      /**
-       * Check-out สำเร็จ
-       * @event PbxConnector#checkout
-       * @type {Object}
-       */
+      logger.info(`Check-out succeeded for room ${normalizedRoom}`, { roomNo: normalizedRoom, commandType: 'ROOM_OFF' });
       this.emit('checkout', result);
 
       return result;

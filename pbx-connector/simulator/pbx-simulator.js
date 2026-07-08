@@ -299,12 +299,57 @@ function processCommand(rawCommand) {
     // Remove the `..` prefix for easier parsing
     const body = cmd.substring(2);
 
-    // ── VERS command ──
-    if (body === 'VERS=') {
+    // ── VERS command (Supports VERS= and VERS) ──
+    if (body === 'VERS=' || body === 'VERS') {
         return {
             response: '==VERS=DX-COMPACT V5.Super Diamond-32C',
             shouldClose: false,
         };
+    }
+
+    // ── PC Operator Handshake Commands ──
+    if (body === 'tcmd=1') {
+        return { response: '==tcmd=1', shouldClose: false };
+    }
+    if (body.startsWith('PASS=')) {
+        const pass = body.substring(5);
+        return { response: `==PASS=${pass}`, shouldClose: false };
+    }
+    if (body === 'RDSS=ALL') {
+        return { response: '==RDSS=ALL', shouldClose: false };
+    }
+    if (body === 'PWER=ALL') {
+        return { response: '==PWER=ALL', shouldClose: false };
+    }
+    if (body === 'EXTA=ALL') {
+        return { response: '==EXTA=ALL', shouldClose: false };
+    }
+    if (body === 'EXTC=ALL') {
+        return { response: '==EXTC=ALL', shouldClose: false };
+    }
+    if (body === 'EVNT=END') {
+        return { response: '==EVNT=END', shouldClose: false };
+    }
+    if (body === 'EVNT=ALL') {
+        return { response: '==EVNT=ALL', shouldClose: false };
+    }
+    if (body === 'SMDXpend=') {
+        return { response: '==SMDXpend=0', shouldClose: false };
+    }
+    if (body === 'DATE=') {
+        const now = new Date();
+        const yy = String(now.getFullYear()).substring(2);
+        const mm = String(now.getMonth() + 1).padStart(2, '0');
+        const dd = String(now.getDate()).padStart(2, '0');
+        const w = now.getDay() || 7; // Sunday = 7
+        return { response: `==DATE=${yy}/${mm}/${dd}-${w}`, shouldClose: false };
+    }
+    if (body === 'TIME=') {
+        const now = new Date();
+        const hh = String(now.getHours()).padStart(2, '0');
+        const mm = String(now.getMinutes()).padStart(2, '0');
+        const ss = String(now.getSeconds()).padStart(2, '0');
+        return { response: `==TIME=${hh}:${mm}:${ss}`, shouldClose: false };
     }
 
     // ── STOP command ──
@@ -694,38 +739,57 @@ const server = net.createServer((socket) => {
     activeConnections.add(socket);
     stats.totalConnections++;
 
-    // Buffer for accumulating incoming data (handles partial reads / TCP fragmentation)
-    let dataBuffer = '';
+    // Immediately write the Phonik PABX Telnet system greeting & prompt if running on standard Telnet port 23
+    if (CONFIG.port === 23) {
+        socket.write('Phonik PABX Telnet system\r\n..');
+    }
+
+    // Buffer for accumulating incoming data (Buffer handles binary and ASCII cleanly)
+    let dataBuffer = Buffer.alloc(0);
 
     // Refresh dashboard to show new connection
     renderDashboard();
 
     // ── Data Handler ──
-    // Accumulates data in a buffer and processes complete lines (terminated by \r\n)
     socket.on('data', (chunk) => {
-        dataBuffer += chunk.toString('ascii');
+        dataBuffer = Buffer.concat([dataBuffer, chunk]);
 
-        // Process all complete lines in the buffer
-        let lineEnd;
-        while ((lineEnd = dataBuffer.indexOf('\r\n')) !== -1) {
-            const line = dataBuffer.substring(0, lineEnd);
-            dataBuffer = dataBuffer.substring(lineEnd + 2);
+        let proc = true;
+        while (proc) {
+            proc = false;
 
-            // Skip empty lines
-            if (line.trim().length === 0) continue;
+            // 1. Process Phonik Binary Keep-Alive / SMDR packets (start with 'Z' / 0x5a)
+            if (dataBuffer.length > 0 && dataBuffer[0] === 0x5a) {
+                if (dataBuffer.length >= 2) {
+                    const len = dataBuffer[1];
+                    const packetLen = 1 + len;
+                    if (dataBuffer.length >= packetLen) {
+                        const binPkt = dataBuffer.subarray(0, packetLen);
+                        dataBuffer = dataBuffer.subarray(packetLen);
+                        
+                        // Log the binary packet to the dashboard
+                        logCommand(clientAddr, `[BIN] ${binPkt.toString('hex')}`, '[OK/IGNORED]');
+                        proc = true;
+                        continue;
+                    }
+                }
+            }
 
-            // Process the command
-            handleCommand(socket, clientAddr, line);
-        }
+            // 2. Process ASCII commands terminated by \n (0x0a)
+            const idx = dataBuffer.indexOf(0x0a);
+            if (idx !== -1) {
+                const line = dataBuffer.subarray(0, idx).toString('ascii').replace(/\r$/, '').trim();
+                dataBuffer = dataBuffer.subarray(idx + 1);
 
-        // Also handle data without \r\n terminator (some clients send bare \n or nothing)
-        // Check for bare \n
-        while ((lineEnd = dataBuffer.indexOf('\n')) !== -1) {
-            const line = dataBuffer.substring(0, lineEnd).replace(/\r$/, '');
-            dataBuffer = dataBuffer.substring(lineEnd + 1);
+                if (line.length === 0) {
+                    proc = true;
+                    continue;
+                }
 
-            if (line.trim().length === 0) continue;
-            handleCommand(socket, clientAddr, line);
+                // Process the command
+                handleCommand(socket, clientAddr, line);
+                proc = true;
+            }
         }
     });
 
