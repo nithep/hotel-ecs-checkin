@@ -1,15 +1,15 @@
-# 🎉 บันทึกความสำเร็จ: การใช้งานเต็มรูปแบบบน Pi Zero 2 W (Production Ready)
+# 🎉 บันทึกความสำเร็จ: การใช้งานเต็มรูปแบบบน Pi 4 (Production Ready)
 
 **วันที่บันทึก:** 2 กรกฎาคม 2026
 **สถานะ:** ✅ สำเร็จ 100% (Standalone Mode)
 
 ## 🏆 ภาพรวมความสำเร็จ (Milestone Achieved)
-เราสามารถนำระบบ **Smart Hotel Self Check-in/Check-out** ทั้งชุด (Frontend + Backend + PBX Connector) ไปรันบนสถาปัตยกรรมเป้าหมายคือ **Raspberry Pi Zero 2 W (Pi Z2W)** ได้สำเร็จอย่างงดงาม! ระบบสามารถทำงานได้เบ็ดเสร็จในตัวเองและยิงคำสั่งข้ามเครือข่ายไปยัง PBX Simulator ได้อย่างสมบูรณ์แบบ
+เราสามารถนำระบบ **Smart Hotel Self Check-in/Check-out** ทั้งชุด (Frontend + Backend + PBX Connector) ไปรันบนสถาปัตยกรรมเป้าหมายคือ **Raspberry Pi 4 (Pi 4)** ได้สำเร็จอย่างงดงาม! ระบบสามารถทำงานได้เบ็ดเสร็จในตัวเองและยิงคำสั่งข้ามเครือข่ายไปยัง PBX Simulator ได้อย่างสมบูรณ์แบบ
 
 ## 🔄 ผลการทดสอบ (อ้างอิงจาก Log จริง)
-1. **Frontend**: โหลดหน้าเว็บ Dashboard ได้รวดเร็วที่ `http://192.168.1.20:3000` การแสดงผล Room Status แม่นยำ
-2. **Auto-Recovery (Sync)**: เมื่อ Backend บน Pi Z2W เปิดขึ้นมา ระบบสามารถตรวจสอบฐานข้อมูลและสั่งงานตู้ PBX ให้ปรับสถานะไฟ (ON/OFF) ให้ตรงกับฐานข้อมูลได้อัตโนมัติ (เช่น Log ฟ้องว่า `Room 105 is Occupied but PBX is OFF. Fixing (Auto-ON)...`) นี่คือฟีเจอร์ที่ยอดเยี่ยมมาก!
-3. **Hardware Gateway**: Pi Z2W ส่งคำสั่ง `..ROOM0101=0` และรับ Heartbeat (`..VERS=`) จาก Windows ได้อย่างเสถียร (ไม่มี Timeout)
+1. **Frontend**: โหลดหน้าเว็บ Dashboard ได้รวดเร็วที่ `http://192.168.1.109:3000` การแสดงผล Room Status แม่นยำ
+2. **Auto-Recovery (Sync)**: เมื่อ Backend บน Pi 4 เปิดขึ้นมา ระบบสามารถตรวจสอบฐานข้อมูลและสั่งงานตู้ PBX ให้ปรับสถานะไฟ (ON/OFF) ให้ตรงกับฐานข้อมูลได้อัตโนมัติ (เช่น Log ฟ้องว่า `Room 105 is Occupied but PBX is OFF. Fixing (Auto-ON)...`) นี่คือฟีเจอร์ที่ยอดเยี่ยมมาก!
+3. **Hardware Gateway**: Pi 4 ส่งคำสั่ง `..ROOM0101=0` และรับ Heartbeat (`..VERS=`) จาก Windows ได้อย่างเสถียร (ไม่มี Timeout)
 
 ## 🛠️ ปัญหาที่พบและวิธีที่ใช้แก้ไข (Knowledge Base)
 - **NPM Conflict (ERESOLVE)**: แพ็กเกจ `@zxing` มีเวอร์ชันที่ขัดแย้งกัน แก้ไขได้เด็ดขาดด้วยการสั่ง `npm install --legacy-peer-deps`

@@ -4,7 +4,7 @@
 
 ## ภาพรวมของ Protocol
 
-ตู้สาขา Phonik จะสื่อสารผ่าน Serial RS-232 หรือ TCP (ผ่านอแดปเตอร์) โดยใช้รูปแบบข้อความ (Text-based protocol) ง่ายๆ ดังนี้:
+ตู้สาขา Phonik จะสื่อสารผ่านพอร์ต LAN ของPBX (TCP) (ผ่านอแดปเตอร์) โดยใช้รูปแบบข้อความ (Text-based protocol) ง่ายๆ ดังนี้:
 - **Client ส่งไป PBX (Command)**: `..[COMMAND]\r\n`
 - **PBX ตอบกลับ Client (Response)**: `==[RESULT]\r\n` (หรือ `==NACK\r\n` หากเกิดข้อผิดพลาด)
 
@@ -48,7 +48,7 @@ node simulator/pbx-simulator.js --port 10001
 
 ### การเชื่อมต่อแอปพลิเคชันเข้ากับ Simulator
 
-เพื่อทดสอบแอปของคุณ (`pi4` หรือ `pi z2w`) กับ Simulator:
+เพื่อทดสอบแอปของคุณ (`pi4` หรือ `Pi 4`) กับ Simulator:
 
 1. ในไฟล์ `.env` ของ `pbx-connector` หรือในส่วนของ config ให้ตั้งค่าโหมด PBX เป็น `tcp`
 2. ตั้งค่า IP Address ให้ชี้ไปยังเครื่องที่กำลังรัน Simulator อยู่

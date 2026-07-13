@@ -13,20 +13,36 @@ timestamp: "2026-06-28T02:00:00+07:00"
 
 ## 🗂️ หมวดหมู่ความรู้หลัก (Core Concepts)
 
+- [[wiki/แนวทางออกแบบ agentic AI harness|Agent Harness Design for Hotel ECS]] - เอกสารสรุปองค์ความรู้จากการประมวลผลระบบ
+- [[wiki/Code as Agent Harness|Codex Code as Agent Harness]] - เอกสารสรุปองค์ความรู้จากการประมวลผลระบบ
+- [[wiki/2026-07-05T233255+0700 การบูรณาการและการนำไปใช้  infrastructure category|"การบูรณาการและการนำไปใช้"]] - เอกสารสรุปองค์ความรู้จากการประมวลผลระบบ
+- [[wiki/2026-07-05T223922_digital_twin_harness|"digital twin, repository เป็น persistent world, multi-agent role specialization, และ test-gated convergence : arXiv 2605.18747 และ repo Awesome-Code-as-Agent-Harness-Papers --- อธิบายความหมายในบริบทเดียวกัน"]] - เอกสารสรุปองค์ความรู้จากการประมวลผลระบบ
 - [[phonik-ecs]] - ข้อมูลระบบฮาร์ดแวร์รีเลย์ควบคุมไฟในห้องพัก
 - [[pbx-integration]] - สถาปัตยกรรมการเชื่อมต่อตู้สาขาโทรศัพท์
 - [[checkin-flow]] - โฟลว์การทำงาน (Business Logic) ของแอปพลิเคชัน
 - [[frontend-architecture]] - โครงสร้างและเทคโนโลยีของหน้าเว็บ (UI)
 - [[concepts/backend-architecture|backend-architecture]] - โครงสร้าง API และระบบจำลอง Mock PBX
 - [[concepts/prototype-strategy|prototype-strategy]] - แผนการทำระบบจำลอง (Digital Twin) และการนำเสนอ
+- [[concepts/agent-harness-design|agent-harness-design]] - สถาปัตยกรรม Code as Agent Harness (Multi-agent & Digital Twin)
+- [[wiki/agent-harness-framework|agent-harness-framework]] - คู่มือแนวคิดทฤษฎีและโครงสร้าง Code as Agent Harness ในระบบ Hotel ECS
+- [[wiki/smart-hotel-comparison|การเปรียบเทียบโมเดลระบบ Smart Hotel]] - การเปรียบเทียบสถาปัตยกรรมและโมเดลการบริการ (LINE LIFF, Kiosk Simulator, IoT)
+- [[concepts/project-plan|project-plan]] - แผนงานหลัก (Master Plan) ของโครงการ
+
 
 ## ⚙️ การติดตั้งและการใช้งานฮาร์ดแวร์จริง (Implementation & Hardware Setup)
 
 - [[wiki/raspberry-pi-setup|raspberry-pi-setup]] - คู่มือการติดตั้งระบบและเตรียมความพร้อม Raspberry Pi
 - [[wiki/phonik-pbx-protocol|phonik-pbx-protocol]] - คู่มือจำลองและใช้งาน Protocol ของตู้สาขา Phonik PBX
 - [[wiki/phase2-hardware-integration|phase2-hardware-integration]] - คู่มือ Roadmap เชื่อมต่อฮาร์ดแวร์จริง Phase 2
-- [[wiki/milestones-and-testing|milestones-and-testing]] - สรุปการทดสอบจำลองระบบและการทดสอบบน Pi Zero 2 W
+- [[wiki/milestones-and-testing|milestones-and-testing]] - สรุปการทดสอบจำลองระบบและการทดสอบบน Pi 4
+- [[wiki/system_cost_and_maintenance|ทะเบียนค่าใช้จ่ายและการบำรุงรักษาระบบ]] - รายละเอียดค่าใช้จ่าย กำหนดชำระ และวิธีการแจ้งเตือน
+- [[wiki/google_workspace_integration|คู่มือการบูรณาการ Google Workspace]] - ขั้นตอนการเชื่อมโยงระบบเข้ากับ Google Chat, AppSheet, Calendar และ Gmail
 - [[wiki/troubleshooting|troubleshooting]] - วิธีแก้ไขปัญหาและบันทึกการซ่อมบำรุงระบบ
+
+## 🧠 การตั้งค่าระบบความรู้ (Knowledge Management)
+
+- [[wiki/obsidian-web-clipper-setup|obsidian-web-clipper-setup]] - คู่มือการตั้งค่า Obsidian Web Clipper และ Templates (OKF)
+- [[wiki/obsidian-sync-and-graph-optimization|obsidian-sync-and-graph-optimization]] - คู่มือการตั้งค่า Obsidian Sync และการปรับแต่ง Graph View ให้สวยงาม
 
 ## 📝 บันทึกระบบ (System Logs)
 - [[log]] - บันทึกการเปลี่ยนแปลงระบบและเอกสาร

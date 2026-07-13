@@ -4,10 +4,10 @@
 
 ## 🌐 Network & SSH (Raspberry Pi)
 
-### LAN (192.168.1.70)
+### LAN (192.168.1.94)
 ```bash
-ssh admin@192.168.1.70
-ping 192.168.1.70 -t
+ssh admin@192.168.1.94
+ping 192.168.1.94 -t
 ```
 
 ### WiFi (pi-4 / 192.168.1.109)
@@ -18,10 +18,10 @@ ping 192.168.1.109 -t
 # MAC: 88:a2:9e:11:07:fe
 ```
 
-### WiFi-Only (pi-z2w / 192.168.1.20)
+### WiFi-Only (pi z2w / 192.168.1.20)
 ```bash
-ssh pi-z2w
-ssh admin@pi-z2w.local
+ssh pi4
+ssh admin@pi z2w.local
 ssh admin@192.168.1.20
 ping 192.168.1.20 -t
 # MAC: 2c:cf:67:8e:f2:b1

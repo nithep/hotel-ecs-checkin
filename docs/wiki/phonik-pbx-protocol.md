@@ -9,7 +9,7 @@ created: 2026-07-02
 # โปรโตคอลตู้สาขา Phonik ECS และการจำลอง
 
 ## สรุปสาระสำคัญ
-ตู้สาขา **Phonik ECS-103R V.5** ใช้ ASCII text-based protocol สื่อสารผ่าน Serial RS-232 หรือ TCP โดยมีรูปแบบคำสั่งที่เรียบง่าย
+ตู้สาขา **Phonik ECS-103R V.5** ใช้ ASCII text-based protocol สื่อสารผ่านพอร์ต LAN ของPBX (TCP) โดยมีรูปแบบคำสั่งที่เรียบง่าย
 
 ## รูปแบบคำสั่ง (Protocol Format)
 - **ส่งคำสั่ง (Command)**: `..[COMMAND]\r\n`

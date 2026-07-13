@@ -17,4 +17,17 @@ timestamp: "2026-06-28T02:00:00+07:00"
 | **2026-06-28** | พัฒนา Unified Presentation Web App (รวบรวมวิดีโอ AI, Dashboard, Check-in และ Manual เข้าด้วยกัน) | Antigravity |
 | **2026-06-28** | Phase 5: ติดตั้ง SQLite Database เพื่อจำสถานะห้อง, เพิ่มฟีเจอร์ Check-out, และสร้างโค้ด RS-232 สำหรับใช้งานจริง | Antigravity |
 | **2026-07-02** | ทำ Vault Distillation (OKF): ย้าย 7 ไฟล์ดิบไปที่ `docs/raw/archive/`, สร้าง Evergreen Notes 5 ไฟล์ใน `docs/wiki/` และอัปเดตดัชนี | Librarian (Antigravity) |
+| **2026-07-05** | จัดระเบียบฐานข้อมูลเอกสาร: ดึงไฟล์แผนงานกลับมาไว้ที่ `docs/concepts/project-plan.md`, ลบไฟล์ซ้ำซ้อนภายนอก, และอัปเดตดัชนี | Librarian (Antigravity) |
+| **2026-07-05** | สร้างคู่มือการตั้งค่า Obsidian Web Clipper และ Templates (OKF) จัดเก็บใน `docs/wiki/` พร้อมเพิ่มลิงก์ในหน้าสารบัญหลัก | Librarian (Antigravity) |
+| **2026-07-05** | ทำ Vault Distillation: สกัดไฟล์แคปเจอร์เป็น `agent-harness-design.md` (ประยุกต์แนวคิด Code as Agent Harness), ย้ายไฟล์ดิบไป archive, และอัปเดตดัชนี | Librarian (Antigravity) |
+| **2026-07-05** | ทำ Vault Distillation: ตรวจสอบและอนุมัติเอกสาร [[wiki/2026-07-05T223922_digital_twin_harness|"digital twin, repository เป็น persistent world, multi-agent role specialization, และ test-gated convergence : arXiv 2605.18747 และ repo Awesome-Code-as-Agent-Harness-Papers --- อธิบายความหมายในบริบทเดียวกัน"]], ย้ายไฟล์ดิบไป archive | Librarian (Verification Agent) |
+| **2026-07-05** | ทำ Vault Distillation: ตรวจสอบและอนุมัติเอกสาร [[wiki/2026-07-05T233255+0700 การบูรณาการและการนำไปใช้  infrastructure category|"การบูรณาการและการนำไปใช้"]], ย้ายไฟล์ดิบไป archive | Librarian (Verification Agent) |
+| **2026-07-05** | ทำ Vault Distillation: ตรวจสอบและอนุมัติเอกสาร [[wiki/Code as Agent Harness|Codex Code as Agent Harness]], ย้ายไฟล์ดิบไป archive | Librarian (Verification Agent) |
+| **2026-07-05** | ทำ Vault Distillation: ตรวจสอบและอนุมัติเอกสาร [[wiki/แนวทางออกแบบ agentic AI harness|Agent Harness Design for Hotel ECS]], ย้ายไฟล์ดิบไป archive | Librarian (Verification Agent) |
+| **2026-07-05** | จัดทำคู่มือและบันทึกเปรียบเทียบสถาปัตยกรรมเชิงทฤษฎี [[wiki/agent-harness-framework|Code as Agent Harness Framework]] กับระบบจริงของ Hotel ECS | Librarian (Antigravity) |
+| **2026-07-09** | ทำ Vault Distillation: สกัดเอกสารเปรียบเทียบระบบ Smart Hotel 3 โมเดล เป็น Evergreen Note [[wiki/smart-hotel-comparison|การเปรียบเทียบโมเดลระบบ Smart Hotel]], คัดลอกรูปภาพประกอบเข้าสู่ workspace เพื่อรองรับ Obsidian Sync, ย้ายไฟล์ดิบไป archive | Librarian (Antigravity) |
+| **2026-07-09** | จัดทำคู่มือ [[wiki/obsidian-sync-and-graph-optimization|คู่มือการตั้งค่า Obsidian Sync และการปรับแต่ง Graph View]] เพื่อเพิ่มความสวยงามและการนำเสนอของคลังความรู้โครงการ | Librarian (Antigravity) |
+| **2026-07-09** | อัปเดตไฟล์ `docs/raw/MANIFEST.sha256` และยืนยันความถูกต้องของคลังข้อมูลดิบทั้งหมด ผ่านสคริปต์ `docs_verify.js` สำเร็จ 100% | Librarian (Antigravity) |
+| **2026-07-10** | จัดทำคู่มือ [[wiki/system_cost_and_maintenance|ทะเบียนค่าใช้จ่ายและการบำรุงรักษาระบบ]] เพื่อเก็บบันทึกประวัติและเตือนการเรียกเก็บเงินของ Google Workspace และโดเมน nithep.com | Librarian (Antigravity) |
+
 

@@ -27,7 +27,7 @@ created: 2026-07-02
      ```
   3. สั่งรีสตาร์ทโปรเซสด้วย `pm2 restart hotel-backend` เพื่อโหลด config ใหม่
 
-## 📌 ปัญหา NPM Conflict และ TypeScript Compiler หายบน Pi Z2W
+## 📌 ปัญหา NPM Conflict และ TypeScript Compiler หายบน Pi 4
 - **อาการ**: `npm install` มีปัญหา ERESOLVE จากความขัดแย้งของแพ็กเกจ `@zxing` ทำให้ไม่สามารถรันตัวคอมไพเลอร์ได้
 - **การแก้ไข**:
   - ใช้คำสั่ง `npm install --legacy-peer-deps` เพื่อแก้ปัญหาความไม่เข้ากันแบบเด็ดขาด
