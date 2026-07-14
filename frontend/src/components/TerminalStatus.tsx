@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Server, Activity, Cpu, HardDrive, Wifi, WifiOff } from 'lucide-react';
+import { Server, Activity, Cpu, HardDrive, Wifi } from 'lucide-react';
 
 const TerminalStatus = () => {
   const [uptime, setUptime] = useState(0);
@@ -60,7 +60,7 @@ const TerminalStatus = () => {
           </div>
           <div>
             <h3 className="font-semibold text-sm">Center Node</h3>
-            <p className="text-xs text-slate-500">Raspberry Pi Zero 2 W</p>
+            <p className="text-xs text-slate-500">Raspberry Pi 4</p>
           </div>
         </div>
 

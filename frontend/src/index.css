@@ -6,7 +6,20 @@
 
 @layer base {
   body {
-    @apply bg-hotel-dark text-slate-100 font-sans antialiased;
+    @apply bg-hotel-dark text-slate-100 font-sans antialiased min-h-screen relative;
+    /* Premium Mesh Gradient Background */
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(20, 20, 31, 1) 0px, transparent 50%),
+      radial-gradient(at 50% 0%, rgba(10, 10, 15, 1) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(20, 20, 31, 1) 0px, transparent 50%),
+      radial-gradient(at 80% 100%, rgba(212, 175, 55, 0.05) 0px, transparent 50%);
+    background-color: #0a0a0f;
+  }
+}
+
+@layer utilities {
+  .glass-panel {
+    @apply bg-hotel-card/60 backdrop-blur-xl border border-white/5 shadow-2xl;
   }
 }
 

@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const { randomUUID } = require('crypto');
@@ -9,6 +10,10 @@ const { ApprovalGate } = require('./services/approval_gate');
 const { initAuditLog, appendAuditEvent, listAuditEvents } = require('./services/audit_log');
 const { RateLimiter } = require('./services/rate_limiter');
 const { TelegramBotService } = require('./services/telegram_bot');
+const { GoogleNotifier } = require('./services/google_notifier');
+const { WiFiService } = require('./services/wifi_service');
+const apiKeyService = require('./services/apiKeyService');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -66,7 +71,15 @@ const rateLimiter = new RateLimiter({
 
 // Initialize Audit Log table
 initAuditLog(db.db);
-console.log('[SAFETY] ✅ Approval Gate, Audit Log, Rate Limiter initialized');
+apiKeyService.initApiKeyDb();
+console.log('[SAFETY] ✅ Approval Gate, Audit Log, Rate Limiter, API Key DB initialized');
+
+// Setup Express Rate Limit for Open API
+const externalApiLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    max: 100, // Limit each IP to 100 requests per windowMs
+    message: { error: 'Too many requests from this IP, please try again after 15 minutes' }
+});
 
 // Initialize Telegram Bot Service
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
@@ -86,6 +99,13 @@ if (TELEGRAM_BOT_TOKEN) {
     telegramBot.start();
 }
 
+// Initialize Google Chat Notifier
+const googleNotifier = new GoogleNotifier();
+if (googleNotifier.isChatActive() || googleNotifier.isSheetsActive()) {
+    console.log('[GOOGLE CHAT/SHEETS] ✅ Google Notifier initialized');
+}
+
+const wifiService = new WiFiService();
 
 // ─── Helper: Build command object for classification ──────────────────────
 function buildCommand(commandType, roomNumber, options = {}) {
@@ -228,10 +248,14 @@ app.get('/api/rooms', (req, res) => {
 
 // ─── Check-in (ผ่าน Safety Pipeline) ──────────────────────────────────────
 app.post('/api/checkin', async (req, res) => {
-    const { roomNumber, guestName, dryRun, dry_run } = req.body;
+    const { roomNumber, guestName, guestEmail, dryRun, dry_run, days, pdpaConsent } = req.body;
     
     if (!roomNumber) {
         return res.status(400).json({ error: 'roomNumber is required' });
+    }
+
+    if (!dryRun && !dry_run && !pdpaConsent) {
+        return res.status(403).json({ error: 'PDPA Consent is required for check-in' });
     }
 
     console.log(`[API] Received Check-in Request for Room: ${roomNumber} (Dry-run: ${Boolean(dryRun || dry_run)})`);
@@ -245,7 +269,8 @@ app.post('/api/checkin', async (req, res) => {
 
     try {
         const safetyResult = await executeWithSafety(command, async () => {
-            const hardwareResult = await pbx.checkIn(roomNumber, guestName);
+            const numDays = days ? parseInt(days, 10) : 1;
+            const hardwareResult = await pbx.checkIn(roomNumber, guestName, numDays);
             return hardwareResult;
         });
 
@@ -262,10 +287,19 @@ app.post('/api/checkin', async (req, res) => {
             });
         }
 
-        // Persist to Database
-        db.updateRoomState(roomNumber, 'occupied', true, (err) => {
+        // Persist to Database with PDPA data
+        const dbOptions = {
+            guestName,
+            guestEmail,
+            consentGivenAt: pdpaConsent ? new Date().toISOString() : null,
+            consentIp: req.ip
+        };
+        db.updateRoomState(roomNumber, 'occupied', true, dbOptions, (err) => {
             if (err) return res.status(500).json({ error: 'Database update failed' });
             
+            // Notify Front Desk via Google Chat (and trigger email via Sheets Webhook)
+            googleNotifier.sendCheckinAlert({ roomNumber, guestName, guestEmail });
+
             res.json({
                 message: 'Check-in successful',
                 trace_id: command.traceId,
@@ -317,6 +351,9 @@ app.post('/api/checkout', async (req, res) => {
         db.updateRoomState(roomNumber, 'vacant', false, (err) => {
             if (err) return res.status(500).json({ error: 'Database update failed' });
             
+            // Notify Front Desk via Google Chat
+            googleNotifier.sendCheckoutAlert({ roomNumber });
+
             res.json({
                 message: 'Check-out successful',
                 trace_id: command.traceId,
@@ -337,6 +374,139 @@ app.get('/api/rooms/:id/status', async (req, res) => {
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
+});
+
+// ─── Control Webhook (สำหรับ AppSheet / แอดมินบังคับเปิด-ปิด) ─────────────
+app.post('/api/rooms/control', async (req, res) => {
+    const { roomNumber, action, source, dryRun } = req.body;
+    
+    if (!roomNumber || !action) {
+        return res.status(400).json({ error: 'roomNumber and action (ON/OFF) are required' });
+    }
+
+    const commandType = action.toUpperCase() === 'ON' ? 'ROOM_ON' : 'ROOM_OFF';
+    const reqSource = source || 'appsheet_webhook';
+
+    console.log(`[API] Received Control Webhook for Room: ${roomNumber} -> ${action} (Source: ${reqSource})`);
+
+    const command = buildCommand(commandType, roomNumber, {
+        source: reqSource,
+        flow: 'force_control',
+        dryRun: Boolean(dryRun),
+    });
+
+    try {
+        const safetyResult = await executeWithSafety(command, async () => {
+            if (commandType === 'ROOM_ON') {
+                return await pbx.checkIn(roomNumber, 'Force ON');
+            } else {
+                return await pbx.checkOut(roomNumber);
+            }
+        });
+
+        if (safetyResult.blocked) {
+            const statusCode = safetyResult.reason === 'RATE_LIMITED' ? 429 : 202;
+            return res.status(statusCode).json(safetyResult);
+        }
+
+        if (safetyResult.dryRun) {
+            return res.json({
+                message: `Control (Dry-run) successful -> ${action}`,
+                trace_id: command.traceId,
+                hardware_status: safetyResult.result,
+            });
+        }
+
+        // Persist to Database
+        const dbStatus = commandType === 'ROOM_ON' ? 'occupied' : 'vacant';
+        const isOccupied = commandType === 'ROOM_ON';
+        
+        db.updateRoomState(roomNumber, dbStatus, isOccupied, (err) => {
+            if (err) return res.status(500).json({ error: 'Database update failed' });
+            
+            // Notify via Google Chat
+            if (commandType === 'ROOM_ON') {
+                googleNotifier.sendCheckinAlert({ roomNumber, guestName: 'Force ON (AppSheet)' });
+            } else {
+                googleNotifier.sendCheckoutAlert({ roomNumber });
+            }
+
+            res.json({
+                success: true,
+                message: `Force ${action} successful`,
+                trace_id: command.traceId,
+                hardware_status: safetyResult.result,
+            });
+        });
+    } catch (err) {
+        console.error(`[API] Control failed for Room ${roomNumber}:`, err.message);
+        res.status(500).json({ error: `PBX command failed: ${err.message}` });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// External / Open API Routes (สำหรับ 3rd Party PMS)
+// ═══════════════════════════════════════════════════════════════════════════
+
+app.post('/api/v1/external/checkin', externalApiLimiter, (req, res) => {
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) {
+        return res.status(401).json({ error: 'API Key is required' });
+    }
+
+    apiKeyService.validateApiKey(apiKey, async (err, isValid) => {
+        if (err || !isValid) {
+            return res.status(403).json({ error: 'Invalid or revoked API Key' });
+        }
+
+        const { roomNumber, guestName, dryRun } = req.body;
+        if (!roomNumber) {
+            return res.status(400).json({ error: 'roomNumber is required' });
+        }
+
+        console.log(`[OPEN-API] Check-in request for Room: ${roomNumber} via API Key`);
+
+        const command = buildCommand('ROOM_ON', roomNumber, {
+            source: 'external_api',
+            flow: 'checkin',
+            guestName,
+            dryRun: Boolean(dryRun),
+        });
+
+        try {
+            const safetyResult = await executeWithSafety(command, async () => {
+                return await pbx.checkIn(roomNumber, guestName);
+            });
+
+            if (safetyResult.blocked) {
+                const statusCode = safetyResult.reason === 'RATE_LIMITED' ? 429 : 202;
+                return res.status(statusCode).json(safetyResult);
+            }
+
+            if (safetyResult.dryRun) {
+                return res.json({
+                    message: 'External Check-in (Dry-run) successful',
+                    trace_id: command.traceId,
+                    hardware_status: safetyResult.result,
+                });
+            }
+
+            // For external checkin, PDPA is handled by 3rd party
+            db.updateRoomState(roomNumber, 'occupied', true, { guestName, consentGivenAt: new Date().toISOString() }, (err) => {
+                if (err) return res.status(500).json({ error: 'Database update failed' });
+                googleNotifier.sendCheckinAlert({ roomNumber, guestName: guestName || 'External API' });
+                res.json({
+                    success: true,
+                    message: 'External Check-in successful',
+                    trace_id: command.traceId,
+                    hardware_status: safetyResult.result,
+                });
+            });
+        } catch (err) {
+            console.error(`[OPEN-API] Check-in failed:`, err.message);
+            res.status(500).json({ error: `Command failed: ${err.message}` });
+        }
+    });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -468,11 +638,35 @@ app.post('/api/admin/approval/:id/execute', async (req, res) => {
             for (const room of command.targetRooms) {
                 hardwareResult = await pbx.checkIn(room, command.guestName);
                 rateLimiter.record(room);
+                
+                // Update SQLite Database
+                await new Promise((resolve, reject) => {
+                    db.updateRoomState(room, 'occupied', true, (err) => {
+                        if (err) {
+                            console.error(`[DB] Failed to update room ${room} state on approval execute:`, err.message);
+                            reject(err);
+                        } else {
+                            resolve();
+                        }
+                    });
+                });
             }
         } else if (command.commandType === 'ROOM_OFF' || command.commandType === 'ALL_ROOM_OFF') {
             for (const room of command.targetRooms) {
                 hardwareResult = await pbx.checkOut(room);
                 rateLimiter.record(room);
+                
+                // Update SQLite Database
+                await new Promise((resolve, reject) => {
+                    db.updateRoomState(room, 'vacant', false, (err) => {
+                        if (err) {
+                            console.error(`[DB] Failed to update room ${room} state on approval execute:`, err.message);
+                            reject(err);
+                        } else {
+                            resolve();
+                        }
+                    });
+                });
             }
         }
 
@@ -513,6 +707,90 @@ app.post('/api/admin/approval/:id/execute', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// API Key Management Routes (/admin/apikeys)
+// ═══════════════════════════════════════════════════════════════════════════
+
+app.get('/api/admin/apikeys', (req, res) => {
+    apiKeyService.listApiKeys((err, keys) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, keys });
+    });
+});
+
+app.post('/api/admin/apikeys', (req, res) => {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'name is required' });
+    
+    apiKeyService.createApiKey(name, (err, keyInfo) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, key: keyInfo });
+    });
+});
+
+app.delete('/api/admin/apikeys/:id', (req, res) => {
+    apiKeyService.revokeApiKey(req.params.id, (err) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, message: 'API Key revoked successfully' });
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Wi-Fi Management Routes
+// ═══════════════════════════════════════════════════════════════════════════
+app.get('/api/wifi/status', async (req, res) => {
+    try {
+        const status = await wifiService.getStatus();
+        res.json(status);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.get('/api/wifi/scan', async (req, res) => {
+    try {
+        const result = await wifiService.scanNetworks();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/wifi/connect', async (req, res) => {
+    const { ssid, password } = req.body;
+    if (!ssid) {
+        return res.status(400).json({ success: false, error: 'SSID is required' });
+    }
+    try {
+        const result = await wifiService.connect(ssid, password);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/wifi/disconnect', async (req, res) => {
+    try {
+        const result = await wifiService.disconnect();
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+app.post('/api/wifi/toggle', async (req, res) => {
+    const { enabled } = req.body;
+    if (enabled === undefined) {
+        return res.status(400).json({ success: false, error: 'enabled parameter is required' });
+    }
+    try {
+        const result = await wifiService.toggleWifi(enabled);
+        res.json(result);
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Audit Log Routes
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -545,7 +823,7 @@ app.get('/api/telemetry/stream', (req, res) => {
     const clientId = Date.now();
     sseClients.push({ id: clientId, res });
 
-    res.write(`data: ${JSON.stringify({ type: 'sys', message: 'SSE Connection Established' })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'sys', data: 'SSE Connection Established' })}\n\n`);
 
     req.on('close', () => {
         sseClients = sseClients.filter(c => c.id !== clientId);
@@ -589,7 +867,6 @@ setInterval(() => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 const fs = require('fs');
-const path = require('path');
 
 // API to serve OKF markdown documents
 app.get('/api/docs', (req, res) => {

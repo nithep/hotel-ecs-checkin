@@ -117,20 +117,41 @@ class TcpTransport extends EventEmitter {
         clearTimeout(connectTimer);
         this._connected = true;
 
-        /**
-         * เมื่อเชื่อมต่อ TCP สำเร็จ
-         * @event TcpTransport#connected
-         * @type {Object}
-         * @property {string} host
-         * @property {number} port
-         */
-        this.emit('connected', { host, port });
-        resolve();
-      });
+        // รอรับข้อความต้อนรับ (Welcome Banner) จากระบบแลน/Telnet ก่อนเชื่อมต่อจริง
+        const bannerTimer = setTimeout(() => {
+          if (this._socket) {
+            this._socket.removeListener('data', onWelcomeData);
+            this._socket.on('data', (chunk) => this._onData(chunk));
+          }
+          this.emit('connected', { host, port });
+          resolve();
+        }, 500); // หน่วงรอรับแบนเนอร์สูงสุด 500ms
 
-      // ── Data handler ──
-      this._socket.on('data', (chunk) => {
-        this._onData(chunk);
+        const onWelcomeData = (chunk) => {
+          const str = chunk.toString('ascii');
+          // หากข้อความที่ได้รับมีคำบ่งชี้ว่าคือระบบ Telnet/PBX ให้ละทิ้งแล้วเข้าสู่โหมดทำงานปกติทันที
+          if (str.includes('Telnet') || str.includes('Phonik') || str.includes('PABX') || str.includes('system')) {
+            clearTimeout(bannerTimer);
+            if (this._socket) {
+              this._socket.removeListener('data', onWelcomeData);
+              this._socket.on('data', (chunk) => this._onData(chunk));
+            }
+            this.emit('connected', { host, port });
+            resolve();
+          } else {
+            // กรณีเป็นข้อมูลชุดอื่น ให้เข้าสู่กระบวนการปกติและส่งต่อข้อมูลให้ประมวลผลทันที
+            clearTimeout(bannerTimer);
+            if (this._socket) {
+              this._socket.removeListener('data', onWelcomeData);
+              this._socket.on('data', (chunk) => this._onData(chunk));
+            }
+            this.emit('connected', { host, port });
+            resolve();
+            this._onData(chunk);
+          }
+        };
+
+        this._socket.on('data', onWelcomeData);
       });
 
       // ── Error handler ──

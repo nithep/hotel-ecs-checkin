@@ -145,6 +145,14 @@ class MockTransport extends EventEmitter {
 
     const cmd = command.replace(/\r?\n/g, '').trim();
 
+    // ── Auth commands ──
+    if (cmd === '..tcmd=1') {
+      return `==tcmd=1${protocol.TERMINATOR}`;
+    }
+    if (cmd.startsWith('..PASS=')) {
+      return `==ACKW${protocol.TERMINATOR}`;
+    }
+
     // ── VERS= (Ping / Version) ──
     if (cmd === '..VERS=') {
       return `==VERS=${this._version}${protocol.TERMINATOR}`;
@@ -155,11 +163,12 @@ class MockTransport extends EventEmitter {
       return `==STOP${protocol.TERMINATOR}`;
     }
 
-    // ── ROOM commands ──
-    const setRoomMatch = cmd.match(/^\.\.ROOM(\d{1,4})=(\d)$/);
+    // ── PWER commands ──
+    const setRoomMatch = cmd.match(/^\.\.PWER(\d{1,4})=(\d+)$/);
     if (setRoomMatch) {
       const [, room, statusStr] = setRoomMatch;
-      const status = parseInt(statusStr, 10);
+      const days = parseInt(statusStr, 10);
+      const status = days > 0 ? protocol.ROOM_STATUS.ON : protocol.ROOM_STATUS.OFF;
       const roomData = this._rooms.get(room) || { status: 0, name: '' };
       roomData.status = status;
       this._rooms.set(room, roomData);
@@ -173,14 +182,16 @@ class MockTransport extends EventEmitter {
         }
       }
 
-      return `==ROOM${room}=${status}${protocol.TERMINATOR}`;
+      const statusStrResp = status === protocol.ROOM_STATUS.ON ? 'on' : 'off';
+      return `==PWER${room}=${statusStrResp}${protocol.TERMINATOR}`;
     }
 
-    const getRoomMatch = cmd.match(/^\.\.ROOM(\d{1,4})=$/);
+    const getRoomMatch = cmd.match(/^\.\.PWER(\d{1,4})=$/);
     if (getRoomMatch) {
       const [, room] = getRoomMatch;
       const roomData = this._rooms.get(room) || { status: 0, name: '' };
-      return `==ROOM${room}=${roomData.status}${protocol.TERMINATOR}`;
+      const statusStrResp = roomData.status === protocol.ROOM_STATUS.ON ? 'on' : 'off';
+      return `==PWER${room}=${statusStrResp}${protocol.TERMINATOR}`;
     }
 
     // ── NAME commands ──
@@ -352,6 +363,17 @@ class PbxConnector extends EventEmitter {
 
     try {
       await this._connectTransport();
+
+      // === AUTHENTICATION PHASE ===
+      logger.info('Authenticating with PBX (tcmd=1)...', { host: this.config.host });
+      await this._transport.send(protocol.buildAuthTcmd());
+      
+      logger.info('Authenticating with PBX (PASS)...', { host: this.config.host });
+      // We can use config.pbxPassword or fallback to 1234
+      const password = this.config.pbxPassword || '1234';
+      await this._transport.send(protocol.buildAuthPass(password));
+      // ============================
+
       this._setState(STATE.CONNECTED);
       this._lastActivityTime = Date.now();
       this._startHeartbeat();
@@ -419,21 +441,22 @@ class PbxConnector extends EventEmitter {
    *
    * @param {string|number} room - Room number
    * @param {string} [guestName] - Guest name (optional, max 16 chars)
+   * @param {number} [days=1] - Number of days for check-in (power duration)
    * @returns {Promise<Object>} { success, room, status, name? }
    * @throws {Error} เมื่อคำสั่งล้มเหลวหลัง retry ทั้งหมด
    *
    * @example
-   * const result = await pbx.checkIn(101, 'John Doe');
+   * const result = await pbx.checkIn(101, 'John Doe', 3);
    * // => { success: true, room: '0101', status: 'ON', name: 'John Doe' }
    */
-  async checkIn(room, guestName) {
+  async checkIn(room, guestName, days = 1) {
     return this._queue.add(async () => {
       this._ensureReady();
       const normalizedRoom = protocol.normalizeRoom(room);
       logger.info(`Starting Check-in pipeline for room ${normalizedRoom}`, { roomNo: normalizedRoom, commandType: 'ROOM_ON' });
 
       // Set room ON
-      const roomCmd = protocol.buildSetRoom(room, protocol.ROOM_STATUS.ON);
+      const roomCmd = protocol.buildSetRoom(room, protocol.ROOM_STATUS.ON, days);
       const roomResp = await this._sendWithRetry(roomCmd);
       const roomParsed = protocol.parseResponse(roomResp);
 
@@ -543,7 +566,13 @@ class PbxConnector extends EventEmitter {
         throw new Error(`Get room status failed for ${normalizedRoom}: ${parsed.errorMessage}`);
       }
 
-      const statusCode = parseInt(parsed.value, 10);
+      let statusCode;
+      if (parsed.type === protocol.RESPONSE_TYPE.POWER) {
+        statusCode = parsed.value === 'on' ? protocol.ROOM_STATUS.ON : protocol.ROOM_STATUS.OFF;
+      } else {
+        statusCode = parseInt(parsed.value, 10);
+      }
+
       return {
         room: normalizedRoom,
         status: statusCode,
@@ -856,6 +885,15 @@ class PbxConnector extends EventEmitter {
         this._createTransport();
         await this._connectTransport();
 
+        // === AUTHENTICATION PHASE ===
+        logger.info('Authenticating with PBX during reconnect (tcmd=1)...', { host: this.config.host });
+        await this._transport.send(protocol.buildAuthTcmd());
+        
+        logger.info('Authenticating with PBX during reconnect (PASS)...', { host: this.config.host });
+        const password = this.config.pbxPassword || '1234';
+        await this._transport.send(protocol.buildAuthPass(password));
+        // ============================
+
         // ทดสอบ connection ด้วย ping
         const cmd = protocol.buildPing();
         const resp = await this._transport.send(cmd);
@@ -1040,7 +1078,7 @@ class PbxConnector extends EventEmitter {
  * });
  *
  * @example
- * // Serial mode — เชื่อมต่อผ่าน RS-232
+ * // Serial mode — เชื่อมต่อผ่านพอร์ต LAN ของPBX
  * const pbx = createConnector({
  *   mode: 'serial',
  *   serialPath: '/dev/ttyUSB0',

@@ -357,12 +357,12 @@ function processCommand(rawCommand) {
         return { response: '==STOP', shouldClose: true };
     }
 
-    // ── ROOM command ──
-    // Patterns: ROOMnnn=r (set) or ROOMnnn= (read)
-    const roomMatch = body.match(/^ROOM(\d{3,4})=(\d?)$/);
-    if (roomMatch) {
-        const roomNum = normalizeRoomNum(roomMatch[1]);
-        const value   = roomMatch[2];
+    // ── PWER command ──
+    // Patterns: PWERnnn=r (set) or PWERnnn= (read)
+    const pwerMatch = body.match(/^PWER(\d{3,4})=(\d?)$/);
+    if (pwerMatch) {
+        const roomNum = normalizeRoomNum(pwerMatch[1]);
+        const value   = pwerMatch[2];
 
         // Validate room exists
         if (!rooms[roomNum]) {
@@ -378,22 +378,31 @@ function processCommand(rawCommand) {
 
         if (value === '') {
             // READ: return current status
+            const statusStr = rooms[roomNum].status === 1 ? 'on' : 'off';
             return {
-                response: `==ROOM${roomNum}=${rooms[roomNum].status}`,
+                response: `==PWER${roomNum}=${statusStr}`,
                 shouldClose: false,
             };
         } else {
-            // SET: update status (0=OFF, 1=ON, 2=MAINT, 3=OOO)
+            // SET: update status (0=OFF, >=1 = ON days)
             const statusVal = parseInt(value, 10);
-            if (statusVal < 0 || statusVal > 3) {
+            if (statusVal < 0) {
                 stats.totalNacks++;
                 return { response: '==NACK', shouldClose: false };
             }
-            rooms[roomNum].status = statusVal;
-            return {
-                response: `==ROOM${roomNum}=${statusVal}`,
-                shouldClose: false,
-            };
+            if (statusVal === 0) {
+                rooms[roomNum].status = 0;
+                return {
+                    response: `==PWER${roomNum}=off`,
+                    shouldClose: false,
+                };
+            } else {
+                rooms[roomNum].status = 1;
+                return {
+                    response: `==PWER${roomNum}=on 14/07/26 18:52:33 - 15/07/26 01:00:00`,
+                    shouldClose: false,
+                };
+            }
         }
     }
 

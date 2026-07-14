@@ -21,8 +21,9 @@ describe('Phonik PBX Protocol Engine', () => {
 
   describe('Command Builders', () => {
     test('ควรสร้างคำสั่ง Set Room Status ที่ถูกต้อง', () => {
-      expect(protocol.buildSetRoom(101, protocol.ROOM_STATUS.ON)).toBe('..ROOM0101=1\r\n');
-      expect(protocol.buildSetRoom('0203', protocol.ROOM_STATUS.OFF)).toBe('..ROOM0203=0\r\n');
+      expect(protocol.buildSetRoom(101, protocol.ROOM_STATUS.ON)).toBe('..PWER0101=1\r\n');
+      expect(protocol.buildSetRoom(101, protocol.ROOM_STATUS.ON, 3)).toBe('..PWER0101=3\r\n');
+      expect(protocol.buildSetRoom('0203', protocol.ROOM_STATUS.OFF)).toBe('..PWER0203=0\r\n');
     });
 
     test('ควร throw error เมื่อใช้ status นอกเหนือจาก 0-3', () => {
@@ -31,7 +32,7 @@ describe('Phonik PBX Protocol Engine', () => {
     });
 
     test('ควรสร้างคำสั่ง Get Room Status ที่ถูกต้อง', () => {
-      expect(protocol.buildGetRoom(101)).toBe('..ROOM0101=\r\n');
+      expect(protocol.buildGetRoom(101)).toBe('..PWER0101=\r\n');
     });
 
     test('ควรสร้างคำสั่ง Set Guest Name และจำกัดความยาว 16 ตัวอักษร', () => {
@@ -65,17 +66,17 @@ describe('Phonik PBX Protocol Engine', () => {
   });
 
   describe('Response Parser', () => {
-    test('ควร parse ROOM status response ได้ถูกต้อง (ทั้ง 3 และ 4 หลัก)', () => {
-      const parsed1 = protocol.parseResponse('==ROOM0101=1\r\n');
-      expect(parsed1.type).toBe(protocol.RESPONSE_TYPE.ROOM);
+    test('ควร parse PWER status response ได้ถูกต้อง', () => {
+      const parsed1 = protocol.parseResponse('==PWER0101=on 14/07/26 18:52:33 - 15/07/26 01:00:00\r\n');
+      expect(parsed1.type).toBe(protocol.RESPONSE_TYPE.POWER);
       expect(parsed1.room).toBe('0101');
-      expect(parsed1.value).toBe('1');
+      expect(parsed1.value).toBe('on');
       expect(parsed1.error).toBe(false);
 
-      const parsed2 = protocol.parseResponse('==ROOM102=0\r\n');
-      expect(parsed2.type).toBe(protocol.RESPONSE_TYPE.ROOM);
+      const parsed2 = protocol.parseResponse('==PWER102=off\r\n');
+      expect(parsed2.type).toBe(protocol.RESPONSE_TYPE.POWER);
       expect(parsed2.room).toBe('102');
-      expect(parsed2.value).toBe('0');
+      expect(parsed2.value).toBe('off');
       expect(parsed2.error).toBe(false);
     });
 

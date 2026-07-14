@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import liff from '@line/liff';
 import { motion } from 'framer-motion';
-import { KeyRound, LogOut, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { KeyRound, LogOut, Loader2, CheckCircle, AlertCircle, Mail, Video } from 'lucide-react';
 
 interface Profile {
   displayName: string;
@@ -18,6 +18,8 @@ const GuestView: React.FC = () => {
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [guestEmail, setGuestEmail] = useState('');
+  const [pdpaConsent, setPdpaConsent] = useState(false);
   const [checkinStatus, setCheckinStatus] = useState<'idle' | 'success'>('idle');
 
   useEffect(() => {
@@ -68,6 +70,8 @@ const GuestView: React.FC = () => {
       const payload = {
         roomNumber,
         guestName: profile?.displayName || 'Unknown Guest',
+        guestEmail: guestEmail.trim() || undefined,
+        pdpaConsent: action === 'checkin' ? pdpaConsent : undefined,
       };
 
       const response = await fetch(endpoint, {
@@ -135,8 +139,9 @@ const GuestView: React.FC = () => {
           <p className="text-neutral-400">Hotel ECS Self-Service</p>
         </div>
 
-        <div className="w-full bg-neutral-900/50 backdrop-blur-xl border border-neutral-800 rounded-3xl p-6 shadow-2xl mb-6">
-          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-neutral-800">
+        <div className="w-full glass-panel rounded-3xl p-6 shadow-2xl mb-6 relative overflow-hidden">
+          <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/10 blur-2xl rounded-full pointer-events-none" />
+          <div className="flex items-center gap-4 mb-6 pb-6 border-b border-white/5 relative z-10">
             {profile?.pictureUrl ? (
               <img 
                 src={profile.pictureUrl} 
@@ -181,11 +186,39 @@ const GuestView: React.FC = () => {
             </motion.div>
           )}
 
+          {checkinStatus !== 'success' && (
+            <div className="mb-6">
+              <div className="relative mb-4">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
+                <input
+                  type="email"
+                  placeholder="อีเมล (เพื่อรับใบเสร็จและลิงก์ห้องพัก)"
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
+                  className="w-full bg-neutral-900/50 border border-white/10 rounded-xl py-3 pl-10 pr-4 text-white placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-hotel-accent/50 transition-all"
+                />
+              </div>
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="pdpa-consent"
+                  checked={pdpaConsent}
+                  onChange={(e) => setPdpaConsent(e.target.checked)}
+                  className="mt-1 w-4 h-4 rounded border-neutral-700 text-hotel-accent focus:ring-hotel-accent/50 bg-neutral-900"
+                />
+                <label htmlFor="pdpa-consent" className="text-xs text-neutral-400 text-left leading-relaxed">
+                  ข้าพเจ้ายินยอมให้โรงแรมเก็บรวบรวมข้อมูลส่วนบุคคลเพื่อวัตถุประสงค์ในการเข้าพัก และยินยอมรับเงื่อนไขการให้บริการ <br/>
+                  <span className="text-emerald-500/70">* ข้อมูลของท่านจะถูกลบทิ้งอัตโนมัติเมื่อเช็คเอาท์</span>
+                </label>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-3">
             <button
               onClick={() => handleAction('checkin')}
-              disabled={actionLoading}
-              className="w-full relative group overflow-hidden bg-emerald-500 text-neutral-950 font-medium text-lg py-4 rounded-2xl flex items-center justify-center gap-2 transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={actionLoading || !pdpaConsent}
+              className="w-full relative group overflow-hidden bg-gradient-to-r from-hotel-accent to-yellow-600 text-neutral-950 font-medium text-lg py-4 rounded-2xl flex items-center justify-center gap-2 transition-all hover:shadow-[0_0_20px_rgba(212,175,55,0.4)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {actionLoading ? (
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -205,6 +238,16 @@ const GuestView: React.FC = () => {
               <LogOut className="w-5 h-5" />
               <span>Check-out</span>
             </button>
+            
+            <a
+              href="https://meet.google.com/new" 
+              target="_blank"
+              rel="noreferrer"
+              className="w-full mt-2 bg-neutral-900/80 border border-hotel-accent/30 text-hotel-accent font-medium py-3 rounded-2xl flex items-center justify-center gap-2 transition-all hover:bg-hotel-accent/10 active:scale-[0.98]"
+            >
+              <Video className="w-5 h-5" />
+              <span>ติดต่อพนักงาน (Video Call)</span>
+            </a>
           </div>
         </div>
 

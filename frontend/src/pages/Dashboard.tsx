@@ -12,7 +12,9 @@ import {
   FileText, 
   Activity, 
   Clock, 
-  Lock 
+  Lock,
+  Video,
+  Code
 } from 'lucide-react';
 import TerminalStatus from '../components/TerminalStatus';
 
@@ -58,6 +60,15 @@ interface AuditEvent {
   result: string | null;
 }
 
+interface ApiKey {
+  id: number;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  last_used_at: string | null;
+  is_active: boolean;
+}
+
 const containerVariants = {
   hidden: { opacity: 0 },
   show: {
@@ -75,8 +86,9 @@ const Dashboard = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<PendingApproval[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditEvent[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'rooms' | 'approvals' | 'audit'>('rooms');
+  const [activeTab, setActiveTab] = useState<'rooms' | 'approvals' | 'audit' | 'developer'>('rooms');
   
   // Modal State for Approval Reason
   const [showReasonModal, setShowReasonModal] = useState(false);
@@ -122,8 +134,20 @@ const Dashboard = () => {
     }
   };
 
+  const fetchApiKeys = async () => {
+    try {
+      const res = await fetch('/api/admin/apikeys');
+      const data = await res.json();
+      if (data.success) {
+        setApiKeys(data.keys);
+      }
+    } catch (error) {
+      console.error("Failed to fetch API keys", error);
+    }
+  };
+
   const loadAllData = async () => {
-    await Promise.all([fetchRooms(), fetchPendingApprovals(), fetchAuditLogs()]);
+    await Promise.all([fetchRooms(), fetchPendingApprovals(), fetchAuditLogs(), fetchApiKeys()]);
     setIsLoading(false);
   };
 
@@ -134,6 +158,7 @@ const Dashboard = () => {
       fetchRooms();
       fetchPendingApprovals();
       if (activeTab === 'audit') fetchAuditLogs();
+      if (activeTab === 'developer') fetchApiKeys();
     }, 4000);
     return () => clearInterval(interval);
   }, [activeTab]);
@@ -218,6 +243,42 @@ const Dashboard = () => {
     }
   };
 
+  const handleCreateApiKey = async () => {
+    const name = prompt("ชื่อระบบ PMS ที่ต้องการออก API Key (เช่น Cloudbeds, Fidelio):");
+    if (!name) return;
+    
+    try {
+      const response = await fetch('/api/admin/apikeys', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        showAlert('success', `✅ สร้าง API Key สำหรับ ${name} แล้ว (คัดลอกคีย์: ${data.key.key})`);
+        fetchApiKeys();
+      } else {
+        showAlert('error', `❌ ${data.error}`);
+      }
+    } catch (error) {
+      showAlert('error', '❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
+    }
+  };
+
+  const handleRevokeApiKey = async (id: number) => {
+    if (!confirm("คุณแน่ใจหรือไม่ที่จะเพิกถอน API Key นี้? PMS จะไม่สามารถสั่งการได้อีกต่อไป")) return;
+    
+    try {
+      const response = await fetch(`/api/admin/apikeys/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        showAlert('success', '✅ เพิกถอน API Key แล้ว');
+        fetchApiKeys();
+      }
+    } catch (error) {
+      showAlert('error', '❌ ล้มเหลว');
+    }
+  };
+
   const stats = {
     total: rooms.length,
     occupied: rooms.filter((r) => r.status === 'occupied').length,
@@ -270,6 +331,17 @@ const Dashboard = () => {
             </span>
             เชื่อมต่อตู้สาขา Phonik PBX สำเร็จ (โหมด Live/Simulator)
           </p>
+          <div className="mt-4">
+            <a
+              href="https://meet.google.com/new"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-hotel-accent/10 hover:bg-hotel-accent/20 border border-hotel-accent/30 text-hotel-accent rounded-lg text-sm font-semibold transition-all hover:shadow-[0_0_15px_rgba(212,175,55,0.2)]"
+            >
+              <Video size={16} />
+              เปิด Virtual Kiosk (รอรับสายแขก)
+            </a>
+          </div>
         </div>
 
         {/* Dynamic Navigation Tabs */}
@@ -312,12 +384,23 @@ const Dashboard = () => {
             <FileText size={16} />
             ประวัติความปลอดภัย (Audit Log)
           </button>
+          <button
+            onClick={() => setActiveTab('developer')}
+            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+              activeTab === 'developer' 
+                ? 'bg-hotel-card text-hotel-accent shadow-lg border border-slate-800' 
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            <Code size={16} />
+            Open API
+          </button>
         </div>
       </div>
 
       {/* Top Stat Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="bg-hotel-card border border-slate-900/50 rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden group">
+        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden group hover:border-hotel-accent/30 transition-colors">
           <div className="p-3 bg-hotel-accent/10 text-hotel-accent rounded-xl">
             <BedDouble size={24} />
           </div>
@@ -327,7 +410,7 @@ const Dashboard = () => {
           </div>
         </div>
         
-        <div className="bg-hotel-card border border-slate-900/50 rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden">
+        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden hover:border-emerald-500/30 transition-colors">
           <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
             <Users size={24} />
           </div>
@@ -337,7 +420,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="bg-hotel-card border border-slate-900/50 rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden">
+        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden hover:border-hotel-accent/30 transition-colors">
           <div className="p-3 bg-hotel-accent/15 text-hotel-accent rounded-xl animate-pulse-slow">
             <Zap size={24} />
           </div>
@@ -347,7 +430,7 @@ const Dashboard = () => {
           </div>
         </div>
 
-        <div className="bg-hotel-card border border-slate-900/50 rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden">
+        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden hover:border-amber-500/30 transition-colors">
           <div className="p-3 bg-amber-500/10 text-amber-500 rounded-xl">
             <Lock size={24} />
           </div>
@@ -376,7 +459,7 @@ const Dashboard = () => {
                   key={room.id}
                   variants={itemVariants}
                   layout
-                  className="bg-hotel-card rounded-2xl p-5 border border-slate-900 hover:border-slate-800 hover:shadow-lg transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]"
+                  className="glass-panel rounded-2xl p-5 hover:border-hotel-accent/50 hover:shadow-[0_0_30px_rgba(212,175,55,0.15)] transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]"
                 >
                   <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-3xl opacity-10 bg-hotel-accent" />
                   
@@ -543,6 +626,82 @@ const Dashboard = () => {
                         <td className="p-4 text-slate-400 text-xs max-w-xs truncate">{log.reason || '-'}</td>
                       </tr>
                     ))}
+                  </tbody>
+                </table>
+              </div>
+            </motion.div>
+          )}
+
+          {/* TAB 4: DEVELOPER / OPEN API */}
+          {activeTab === 'developer' && (
+            <motion.div
+              key="developer"
+              initial={{ opacity: 0, y: 15 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -15 }}
+              className="space-y-4"
+            >
+              <div className="flex justify-between items-center bg-hotel-card border border-slate-900 rounded-2xl p-6 shadow-lg">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                    <Code className="text-hotel-accent" /> Developer Portal (Open API)
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">จัดการ API Keys สำหรับเชื่อมต่อระบบ Hotel ECS กับระบบ Property Management System (PMS) ภายนอก</p>
+                </div>
+                <button
+                  onClick={handleCreateApiKey}
+                  className="bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-emerald-950/20 whitespace-nowrap"
+                >
+                  + สร้าง API Key ใหม่
+                </button>
+              </div>
+
+              <div className="bg-hotel-card border border-slate-900 rounded-2xl overflow-hidden">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-slate-900 bg-slate-950 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                      <th className="p-4">ระบบ PMS (ชื่อ)</th>
+                      <th className="p-4">API Key (Prefix)</th>
+                      <th className="p-4">สถานะ</th>
+                      <th className="p-4">สร้างเมื่อ</th>
+                      <th className="p-4">ใช้งานล่าสุด</th>
+                      <th className="p-4 text-right">จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-900/60 text-sm text-slate-300">
+                    {apiKeys.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="p-8 text-center text-slate-500">
+                          ยังไม่มี API Key ในระบบ
+                        </td>
+                      </tr>
+                    ) : (
+                      apiKeys.map((key) => (
+                        <tr key={key.id} className="hover:bg-slate-950/30 transition-colors">
+                          <td className="p-4 font-semibold text-slate-200">{key.name}</td>
+                          <td className="p-4 text-hotel-accent font-mono">{key.key_prefix}</td>
+                          <td className="p-4">
+                            {key.is_active ? (
+                              <span className="bg-emerald-950 text-emerald-400 border border-emerald-800 text-[10px] px-2 py-0.5 rounded-md font-bold uppercase">Active</span>
+                            ) : (
+                              <span className="bg-rose-950 text-rose-400 border border-rose-800 text-[10px] px-2 py-0.5 rounded-md font-bold uppercase">Revoked</span>
+                            )}
+                          </td>
+                          <td className="p-4 text-xs text-slate-400">{new Date(key.created_at).toLocaleString('th-TH')}</td>
+                          <td className="p-4 text-xs text-slate-400">{key.last_used_at ? new Date(key.last_used_at).toLocaleString('th-TH') : '-'}</td>
+                          <td className="p-4 text-right">
+                            {key.is_active && (
+                              <button
+                                onClick={() => handleRevokeApiKey(key.id)}
+                                className="text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-950/50 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border border-rose-900/30"
+                              >
+                                เพิกถอน (Revoke)
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
                   </tbody>
                 </table>
               </div>

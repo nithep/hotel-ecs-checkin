@@ -17,6 +17,7 @@ const Scan = () => {
   const [rooms, setRooms] = useState<Room[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<string>('');
   const [guestName, setGuestName] = useState<string>('');
+  const [pdpaConsent, setPdpaConsent] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
 
   const fetchRooms = async () => {
@@ -64,7 +65,7 @@ const Scan = () => {
     try {
       const endpoint = flow === 'checkin' ? '/api/checkin' : '/api/checkout';
       const payload = flow === 'checkin' 
-        ? { roomNumber: selectedRoom, guestName } 
+        ? { roomNumber: selectedRoom, guestName, pdpaConsent } 
         : { roomNumber: selectedRoom };
 
       const response = await fetch(endpoint, {
@@ -95,6 +96,7 @@ const Scan = () => {
     setStatus('idle');
     setSelectedRoom('');
     setGuestName('');
+    setPdpaConsent(false);
     setErrorMsg('');
   };
 
@@ -111,7 +113,7 @@ const Scan = () => {
       </div>
 
       {/* Main card */}
-      <div className="w-full bg-hotel-card border border-slate-900 rounded-3xl p-6 shadow-2xl relative overflow-hidden">
+      <div className="w-full glass-panel rounded-3xl p-6 shadow-2xl relative overflow-hidden">
         {/* Decorative elements */}
         <div className="absolute -left-16 -bottom-16 w-36 h-36 rounded-full blur-3xl opacity-10 bg-hotel-accent" />
         <div className="absolute -right-16 -top-16 w-36 h-36 rounded-full blur-3xl opacity-10 bg-hotel-accent" />
@@ -194,10 +196,27 @@ const Scan = () => {
                 )}
               </div>
 
+              {/* PDPA Consent Checkbox for Check-in */}
+              {flow === 'checkin' && (
+                <div className="flex items-start gap-3 bg-slate-950/40 p-4 rounded-xl border border-slate-900">
+                  <input
+                    type="checkbox"
+                    id="pdpa-consent-scan"
+                    checked={pdpaConsent}
+                    onChange={(e) => setPdpaConsent(e.target.checked)}
+                    className="mt-1 w-4 h-4 rounded border-slate-800 text-hotel-accent focus:ring-hotel-accent/50 bg-slate-900"
+                  />
+                  <label htmlFor="pdpa-consent-scan" className="text-xs text-slate-400 text-left leading-relaxed">
+                    ข้าพเจ้ายินยอมให้โรงแรมเก็บรวบรวมข้อมูลส่วนบุคคลเพื่อวัตถุประสงค์ในการเข้าพัก และยินยอมรับเงื่อนไขการให้บริการ <br/>
+                    <span className="text-emerald-500/70">* ข้อมูลของท่านจะถูกลบทิ้งอัตโนมัติเมื่อเช็คเอาท์</span>
+                  </label>
+                </div>
+              )}
+
               {/* Action Button */}
               <button
                 onClick={handleProcessAction}
-                disabled={!selectedRoom || (flow === 'checkin' && !guestName.trim())}
+                disabled={!selectedRoom || (flow === 'checkin' && (!guestName.trim() || !pdpaConsent))}
                 className="w-full py-4 bg-gradient-to-r from-hotel-accent to-amber-600 hover:from-amber-500 hover:to-hotel-accent disabled:from-slate-800 disabled:to-slate-900 disabled:text-slate-600 disabled:cursor-not-allowed text-white rounded-xl font-bold text-sm transition-all duration-300 shadow-xl flex items-center justify-center gap-2"
               >
                 ยืนยันและสแกนระบบไฟฟ้า

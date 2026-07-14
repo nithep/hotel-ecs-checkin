@@ -46,6 +46,24 @@ timestamp: "2026-06-28T02:00:00+07:00"
 
 ## 📝 บันทึกระบบ (System Logs)
 - [[log]] - บันทึกการเปลี่ยนแปลงระบบและเอกสาร
+- [[wiki/project_timeline|project_timeline]] - บันทึกไทม์ไลน์การก่อสร้างโครงการ
+
+## ⚙️ เอกสารทางเทคนิคและคู่มือเพิ่มเติม
+- [[wiki/PBX_Relay_Config|PBX_Relay_Config]]
+- [[wiki/cloudflare_tunnel_setup|cloudflare_tunnel_setup]]
+- [[wiki/google_apps_script_setup|google_apps_script_setup]]
+- [[wiki/infrastructure_setup|infrastructure_setup]]
+- [[wiki/liff-checkin-process|liff-checkin-process]]
+- [[wiki/network-setup|network-setup]]
+- [[wiki/new_site_commissioning_guide|new_site_commissioning_guide]]
+- [[wiki/operational_scenarios|operational_scenarios]]
+- [[wiki/phase5-line-integration|phase5-line-integration]]
+- [[wiki/phase6-system-blueprint|phase6-system-blueprint]]
+- [[wiki/simulation_report|simulation_report]]
+- [[wiki/solo_dev_business_strategy|solo_dev_business_strategy]]
+- [[wiki/squarespace-domain-verification|squarespace-domain-verification]]
+- [[wiki/technician_pbx_manual|technician_pbx_manual]]
+- [[wiki/wifi-only-guide|wifi-only-guide]]
 
 ---
 *บันทึกโดย: Librarian Agent (Antigravity)*

@@ -139,5 +139,45 @@
   - **การดำเนินการ**: ทำการ SSH เข้าสู่ระบบด้วยบัญชีผู้ใช้ `ecs-agent` บนพอร์ต LAN และปิดการทำงานของชิป Wi-Fi ถาวรในระดับฮาร์ดแวร์โดยการเพิ่มบรรทัด `dtoverlay=disable-wifi` ในไฟล์ `/boot/firmware/config.txt` แล้วทำการรีบูตระบบใหม่
   - **ผลลัพธ์**: บอร์ด Pi 4 ทำงานอย่างมั่นคงผ่านสาย LAN ช่องทางเดียว (`192.168.1.94`) ทั้งสำหรับการเชื่อมต่อตู้ PBX และการเชื่อมต่ออินเทอร์เน็ตเพื่อเข้าถึงแดชบอร์ด โดยมีอัตราการตอบสนองเฉลี่ยที่ 5ms (0% packet loss) และขจัดปัญหาอินเตอร์เฟสชนกันโดยเด็ดขาด 100%
 
+* **การบูรณาการระบบกับ Google Workspace - เฟส 1 (Google Workspace Integration - Phase 1):**
+  - **การดำเนินการ**: เปิดใช้งานระบบแจ้งเตือนและบันทึกประวัติการเช็คอิน/เช็คเอาท์ร่วมกับ Google Workspace โดยทำการตั้งค่าระบบแจ้งเตือนการ์ด (Card Notification) ไปยัง Google Chat และบันทึกประวัติลง Google Sheets ผ่าน Webhook
+  - **การกู้คืนการตั้งค่าสิ่งแวดล้อม (Self-Healing Configuration)**: ตรวจพบและแก้ไขปัญหาที่ไฟล์ `/opt/hotel-ecs/config/.env` ในบอร์ด Pi ถูกเขียนทับด้วยข้อมูลจาก `.env` ตัวนอก ส่งผลให้ค่าเชื่อมต่อตู้สาขา (PBX) หายไป โดยทีมพัฒนาได้กู้คืนค่าสิ่งแวดล้อมกลับมาได้ครบถ้วน และทำการผูกตัวแปร Webhook ใหม่ทั้งหมด
+  - **ผลการทดสอบระบบแจ้งเตือน (Chat Webhook Verification)**: ส่งการ์ดแจ้งเตือน Check-in (🛎️ New Check-In Alert) และ Check-out (🚪 Check-Out Alert) สำหรับห้องทดลอง 999 เข้าห้องแชท "Hotel Operations" บน Google Chat ได้สำเร็จ 100% (Status 200)
+  - **การตรวจสอบระบบสเปรดชีต (Sheets Webhook Status)**: ดำเนินการแก้ไขการอนุญาตเข้าถึง Web App ใน Google Apps Script จาก "ทุกคนที่มีบัญชี Google" ให้เป็น "ทุกคน" (Anyone) ส่งผลให้การทดสอบบันทึกข้อมูล Check-in / Check-out ลงตาราง Google Sheets สำเร็จ 100% (Status 200) และพร้อมใช้งานสำหรับเจ้าของระบบในการดึงยอดรายงานประจำวัน
+
+## 💎 Phase 7: การพัฒนาขั้นสุดท้าย (Workspace Extension & Premium Frontend)
+**ช่วงเวลา:** [กรกฎาคม 2026]
+* **การขยายขีดความสามารถ Google Workspace (Phase 2 & 3):**
+  - **สร้าง Control Webhook สำหรับ AppSheet**: พัฒนา API Endpoint ใหม่ (`/api/rooms/control`) เพื่อรองรับการยิง Webhook แบบ POST จาก Google AppSheet ให้ผู้ดูแลระบบสามารถสั่ง Force ON / Force OFF ไฟฟ้าห้องพักผ่านแอปมือถือได้อย่างปลอดภัย พร้อมบันทึกประวัติกลับไปที่ Audit Log และส่งสัญญาณแจ้งเตือนเข้า Google Chat
+  - **ตั้งค่า Gmail สำหรับส่ง Welcome Email (ต้อนรับแขก)**: เพิ่มสคริปต์ในฝั่ง Google Apps Script (Sheets Webhook) เพื่อรับค่า `guestEmail` จากการเช็คอินหน้าเว็บ และส่งอีเมลต้อนรับแขกพร้อมระบุเลขห้อง ผ่านระบบ `MailApp.sendEmail` อัตโนมัติในนามของโรงแรม
+* **การยกระดับความสวยงามของ Frontend (Premium Redesign):**
+  - **วิเคราะห์และปรับแต่งธีม (Theme Refinement)**: ปรับแก้ค่า `tailwind.config.js` ให้ใช้ชุดสีระดับพรีเมียม (Obsidian Deep Black `#0a0a0f`, Champagne Gold `#d4af37`, และ Emerald Success) พร้อมกำหนดค่าฟอนต์สมัยใหม่ และใส่ลูกเล่น Glassmorphism / Glow Effects
+  - **เพิ่มฟีเจอร์ Virtual Kiosk (Google Meet)**: ปรับปรุงหน้า `GuestView.tsx` (สำหรับแขก) โดยเพิ่มช่องรับอีเมลเพื่อออกใบเสร็จรับเงิน/อีเมลต้อนรับ พร้อมทั้งแทรกปุ่ม "ติดต่อพนักงาน (Video Call)" ซึ่งจะเปิดลิงก์ไปยัง Google Meet โดยอัตโนมัติ เพื่อรองรับการตั้งตู้ Kiosk ในอนาคต
+  - **ยกระดับ Dashboard ผู้ดูแล (Real-time Animations)**: ปรับหน้าจอ `Dashboard.tsx` ของพนักงานต้อนรับให้แสดงผลสถานะห้องพัก, ค้างการอนุมัติ (Pending Approvals) และประวัติความปลอดภัย (Audit Log) ด้วย `framer-motion` (Animations) รวมถึงได้เพิ่มปุ่มลัด "เปิด Virtual Kiosk (รอรับสายแขก)" ที่ด้านบน เพื่อเตรียมพร้อมรับสาย Video Call จากแขกได้ทันที
+  - **อัปเดตหน้าจัดการ Wi-Fi (`/wifi`)**: ตรวจสอบหน้า `WifiSettings.tsx` ให้แนบเนียนไปกับ Theme ใหม่ (Glassmorphism & Gold Accent) พร้อมปรับการเชื่อมต่อกับระบบ `wifi_service.js` ทำให้ระบบทั้งหมดเสร็จสมบูรณ์ 100% พร้อมสำหรับการปล่อยใช้งานจริง (Go-Live)
 
 
+* **�������ⵤ���Ѻ����Ѻ�к� Check-in/Check-out (Reverse Engineering PBX Protocol):**
+  - **�ѡ�Ѻ����� (Packet Sniffing)**: ���ҧʤ�Ի�� pbx-proxy-sniffer.js ���ʹѡ�Ѻ�����š��������������ҧ����� PC Operator ��е���Ң� (Port 23) ����Ҥ���觤Ǻ��������� ..ROOMxxxx=1 �������¤Դ���
+  - **�鹾������ PWER**: ����ҵ���Ң��������Ѻ ..PWER<������ͧ>=<�ӹǹ�ѹ> ����Ѻ�Դ� (Check-in) ����觤��   ����Ѻ�Դ� (Check-out) �� ..PWER1017=1 (�Դ 1 �ѹ) ��� ..PWER1017=0 (�Դ�)
+  - **�ѻവ�к� Pbx-Connector**: ��� protocol.js ��� index.js ��������� PWER �������ö�Ѻ���������� days �� �������Ѻ Backend Route /api/checkin ����觨ӹǹ�ѹŧ价���� PBX �觼�������������͡Ѻ�������ó� 100% ������� Real-world Deployment
+  - **ค้นพบและเพิ่มระบบ Authentication (PBX Auth Phase)**: ทำการ Reverse-engineer การเชื่อมต่อและพบว่าต้องมีการอัปเดต \pbx-connector\ ให้ส่ง \..tcmd=1\ และ \..PASS=\ เพื่อยืนยันตัวตนก่อนส่งคำสั่ง ป้องกันปัญหา PBX ปฏิเสธคำสั่ง (NACK/Ignore) สำเร็จ 100%
+
+### Phase 7: อัปเกรดหน้าเว็บ Premium Frontend
+- **วันที่:** 2026-07-14
+- **รายละเอียด:**
+  - อัปเกรด UI/UX ตามกฎ Premium Design (Glassmorphism, Dark Theme)
+  - เพิ่ม Google Fonts (Inter) และขยาย Color Palette (โรงแรม: ทองแดง/ดำ)
+  - ปรับปรุง Layout, Dashboard, และหน้า GuestView 
+- **สถานะ:** เสร็จสิ้น (Verified)
+
+
+### Phase 8: Commercialization & Enterprise Integration
+- **วันที่:** 2026-07-14
+- **รายละเอียด:**
+  - 🔐 **PDPA Compliance:** เพิ่มหน้าต่างยินยอม (Consent) และระบบทำลายข้อมูลแขกอัตโนมัติเมื่อเช็คเอาท์
+  - 🔌 **Open API:** สร้าง `apiKeyService` และเปิด Endpoint ให้นักพัฒนาภายนอกเชื่อมต่อ
+  - 🛡️ **Security Hardening:** ติดตั้ง `express-rate-limit` เพื่อป้องกันการสแปมยิง API
+  - 💻 **Developer Portal:** เพิ่มแท็บ 'Open API' ใน Dashboard ให้แอดมินสร้างและเพิกถอน API Key ได้
+  - 🛠️ **Self-Healing & DB Migration:** แก้ไขบั๊กการตัดศูนย์เลขห้องพัก (101-106) บน PBX, เพิ่มระบบ Auth บน Auto-reconnect และทำระบบ Auto-Migration บน SQLite
+- **สถานะ:** เสร็จสิ้น (Verified)

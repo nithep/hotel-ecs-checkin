@@ -1,6 +1,6 @@
 #!/bin/bash
 # -----------------------------------------------------------------------------
-# VPN Tunnel Health Check Script for Raspberry Pi Zero 2 W
+# VPN Tunnel Health Check Script for Raspberry Pi 4
 # This script pings the VPN Hub (10.0.0.1) and restarts the WireGuard
 # interface if connection fails.
 # Recommended cron job: */2 * * * * /usr/local/bin/vpn-healthcheck.sh

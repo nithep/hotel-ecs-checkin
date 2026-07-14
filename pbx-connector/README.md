@@ -11,7 +11,7 @@ pbx-connector/
 ├── mock_pbx.js           # Legacy mock (fallback for mode='mock')
 ├── transport/
 │   ├── tcp.js            # TCP/Telnet transport (Node.js net module)
-│   └── serial.js         # Serial RS-232 transport (serialport library)
+│   └── serial.js         # พอร์ต LAN ของPBX transport (serialport library)
 ├── simulator/
 │   └── pbx-simulator.js  # TCP server simulating real Phonik PBX
 └── test/

@@ -5,6 +5,7 @@ import Scan from './pages/Scan';
 import Presentation from './pages/Presentation';
 import Manual from './pages/Manual';
 import GuestView from './pages/GuestView';
+import WifiSettings from './pages/WifiSettings';
 
 function App() {
   return (
@@ -16,6 +17,7 @@ function App() {
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="scan" element={<Scan />} />
           <Route path="manual" element={<Manual />} />
+          <Route path="wifi" element={<WifiSettings />} />
         </Route>
       </Routes>
     </BrowserRouter>

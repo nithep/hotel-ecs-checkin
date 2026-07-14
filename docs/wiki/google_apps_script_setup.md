@@ -26,14 +26,43 @@ function doPost(e) {
     const action = data.action || 'Unknown';
     const room = data.roomNumber || '-';
     const guest = data.guestName || '-';
+    const guestEmail = data.guestEmail || '';
     
-    sheet.appendRow([timestamp, action, room, guest]);
+    sheet.appendRow([timestamp, action, room, guest, guestEmail]);
+    
+    // ส่งอีเมลต้อนรับถ้าเป็น Check-in และมีอีเมล
+    if (action === 'Check-in' && guestEmail) {
+      sendWelcomeEmail(guest, room, guestEmail);
+    }
     
     return ContentService.createTextOutput(JSON.stringify({"status": "success"}))
       .setMimeType(ContentService.MimeType.JSON);
   } catch (error) {
     return ContentService.createTextOutput(JSON.stringify({"status": "error", "message": error.message}))
       .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ฟังก์ชันส่งอีเมลต้อนรับ (Welcome Email)
+function sendWelcomeEmail(guestName, roomNumber, guestEmail) {
+  const subject = `ยินดีต้อนรับสู่โรงแรมของเรา - ห้องพัก ${roomNumber}`;
+  const body = `
+  เรียนคุณ ${guestName},
+
+  ขอบคุณที่เลือกเข้าพักกับเรา! 
+  
+  ห้องพักของคุณคือห้อง: ${roomNumber}
+  
+  หากคุณต้องการความช่วยเหลือเพิ่มเติม สามารถติดต่อผ่านทางหน้าเว็บ Self Check-in ได้ตลอด 24 ชั่วโมง
+
+  ขอให้มีความสุขกับการพักผ่อนครับ
+  ทีมงาน Hotel-ECS
+  `;
+  
+  try {
+    MailApp.sendEmail(guestEmail, subject, body);
+  } catch (e) {
+    console.error("Email send failed:", e);
   }
 }
 

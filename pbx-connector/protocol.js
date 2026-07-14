@@ -3,7 +3,7 @@
 /**
  * @file protocol.js — Phonik PBX ASCII Protocol Engine (Pure Functions)
  *
- * โปรโตคอลของ Phonik PBX ใช้ text-based ASCII ผ่าน Telnet/TCP หรือ Serial RS-232
+ * โปรโตคอลของ Phonik PBX ใช้ text-based ASCII ผ่าน Telnet/TCP หรือ พอร์ต LAN ของPBX
  *
  * ┌─────────────────────────────────────────────────────────┐
  * │  Command format:  ..COMMAND\r\n                        │
@@ -85,6 +85,7 @@ const ROOM_STATUS_LABEL = Object.freeze({
  */
 const RESPONSE_TYPE = Object.freeze({
   ROOM: 'ROOM',
+  POWER: 'POWER',
   NAME: 'NAME',
   VERSION: 'VERSION',
   STOP: 'STOP',
@@ -112,7 +113,7 @@ function normalizeRoom(room) {
   if (!/^\d{1,4}$/.test(str)) {
     throw new Error(`Invalid room number: "${room}" — must be 1-4 digits`);
   }
-  return str.padStart(4, '0');
+  return str;
 }
 
 /**
@@ -134,12 +135,16 @@ function validateStatus(status) {
  * @returns {string} Sanitized name (max 16 chars, ASCII-safe)
  * @throws {Error} ถ้า name ว่าง
  */
-function sanitizeName(name) {
+function sanitizeName(name, room = '') {
   if (!name || typeof name !== 'string') {
     throw new Error('Guest name is required and must be a string');
   }
-  // Trim and truncate to MAX_NAME_LENGTH
-  return name.trim().substring(0, MAX_NAME_LENGTH);
+  // Trim and strip non-printable ASCII characters (keep space and standard ASCII)
+  let cleanName = name.replace(/[^\x20-\x7E]/g, '').trim();
+  if (!cleanName) {
+    cleanName = room ? `Guest ${room}` : 'Guest';
+  }
+  return cleanName.substring(0, MAX_NAME_LENGTH);
 }
 
 // ─── Command Builders ─────────────────────────────────────────────────────────
@@ -156,10 +161,14 @@ function sanitizeName(name) {
  * @param {number} status - Status value from ROOM_STATUS enum (0-3)
  * @returns {string} Complete command string with terminator
  */
-function buildSetRoom(room, status) {
+function buildSetRoom(room, status, days = 1) {
   const numb = normalizeRoom(room);
   validateStatus(status);
-  return `${CMD_PREFIX}ROOM${numb}=${status}${TERMINATOR}`;
+  
+  // แปลง status (0=OFF, 1=ON) ไปเป็นจำนวนวันที่ต้องการเปิดไฟ (สำหรับ ON จะใช้ days, ส่วน OFF จะใช้ 0)
+  const powerValue = status === ROOM_STATUS.ON ? days : 0;
+  
+  return `${CMD_PREFIX}PWER${numb}=${powerValue}${TERMINATOR}`;
 }
 
 /**
@@ -173,7 +182,7 @@ function buildSetRoom(room, status) {
  */
 function buildGetRoom(room) {
   const numb = normalizeRoom(room);
-  return `${CMD_PREFIX}ROOM${numb}=${TERMINATOR}`;
+  return `${CMD_PREFIX}PWER${numb}=${TERMINATOR}`;
 }
 
 /**
@@ -188,7 +197,7 @@ function buildGetRoom(room) {
  */
 function buildSetName(room, name) {
   const numb = normalizeRoom(room);
-  const safeName = sanitizeName(name);
+  const safeName = sanitizeName(name, numb);
   return `${CMD_PREFIX}NAME${numb}=${safeName}${TERMINATOR}`;
 }
 
@@ -204,6 +213,26 @@ function buildSetName(room, name) {
 function buildGetName(room) {
   const numb = normalizeRoom(room);
   return `${CMD_PREFIX}NAME${numb}=${TERMINATOR}`;
+}
+
+/**
+ * Build command to **set** terminal command mode (tcmd=1).
+ * จำเป็นต้องเรียกคำสั่งนี้ก่อนเพื่อเริ่มโหมดคำสั่ง
+ *
+ * @returns {string} Complete command string with terminator
+ */
+function buildAuthTcmd() {
+  return `${CMD_PREFIX}tcmd=1${TERMINATOR}`;
+}
+
+/**
+ * Build command to **authenticate** via password.
+ *
+ * @param {string} password - The PBX password (default: 1234)
+ * @returns {string} Complete command string with terminator
+ */
+function buildAuthPass(password = '1234') {
+  return `${CMD_PREFIX}PASS=${password}${TERMINATOR}`;
 }
 
 /**
@@ -344,10 +373,14 @@ function parseResponse(rawString) {
   line = line.replace(/^\.+/, '');
 
   // ── NACK ──
-  if (line === NACK) {
+  if (line === NACK || line.startsWith('==NACK')) {
     result.type = RESPONSE_TYPE.NACK;
     result.error = true;
     result.errorMessage = 'PBX returned NACK — command rejected or unknown';
+    const nackMatch = line.match(/^==NACK=>(.*)$/);
+    if (nackMatch) {
+      result.errorMessage = `PBX returned NACK for command: ${nackMatch[1]}`;
+    }
     return result;
   }
 
@@ -381,6 +414,17 @@ function parseResponse(rawString) {
     result.type = RESPONSE_TYPE.ROOM;
     result.room = roomMatch[1];
     result.value = roomMatch[2] || null;
+    return result;
+  }
+
+  // ── PWER{1-4digits}={on|off ...} ──
+  // PBX replies: ==PWER1017=on 14/07/26 18:52:33 - 15/07/26 01:00:00
+  // or: ==PWER1017=off
+  const pwerMatch = body.match(/^PWER(\d{1,4})=(on|off)(?:\s.*)?$/i);
+  if (pwerMatch) {
+    result.type = RESPONSE_TYPE.POWER;
+    result.room = pwerMatch[1];
+    result.value = pwerMatch[2].toLowerCase(); // 'on' or 'off'
     return result;
   }
 
@@ -434,6 +478,8 @@ module.exports = {
   normalizeRoom,
 
   // Command Builders
+  buildAuthTcmd,
+  buildAuthPass,
   buildSetRoom,
   buildGetRoom,
   buildSetName,

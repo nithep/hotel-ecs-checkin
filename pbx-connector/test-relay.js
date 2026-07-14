@@ -59,28 +59,36 @@ const log = (icon, msg) => console.log(`  ${icon}  ${msg}`);
 const separator = () => console.log('─'.repeat(60));
 
 /**
- * ส่งคำสั่งผ่าน TCP socket และรอ response
+ * รอรับข้อมูลจาก TCP socket จนกว่าจะเจอ TERMINATOR หรือหมดเวลา
  */
-function sendCommand(socket, command) {
+function readUntil(socket, terminator = TERMINATOR, timeoutMs = TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
         let buffer = '';
         const timer = setTimeout(() => {
-            reject(new Error(`Timeout: ตู้ PBX ไม่ตอบกลับภายใน ${TIMEOUT_MS}ms`));
-        }, TIMEOUT_MS);
+            reject(new Error(`Timeout: PBX ไม่ตอบกลับใน ${timeoutMs}ms (buffer: ${JSON.stringify(buffer)})`));
+            socket.removeListener('data', onData);
+        }, timeoutMs);
 
         const onData = (chunk) => {
             buffer += chunk.toString('ascii');
-            const idx = buffer.indexOf(TERMINATOR);
+            const idx = buffer.indexOf(terminator);
             if (idx !== -1) {
                 clearTimeout(timer);
                 socket.removeListener('data', onData);
-                resolve(buffer.substring(0, idx + TERMINATOR.length));
+                resolve(buffer.substring(0, idx + terminator.length));
             }
         };
 
         socket.on('data', onData);
-        socket.write(command, 'ascii');
     });
+}
+
+/**
+ * ส่งคำสั่งผ่าน TCP socket และรอ response
+ */
+async function sendCommand(socket, command) {
+    socket.write(command, 'ascii');
+    return await readUntil(socket, TERMINATOR);
 }
 
 /**
@@ -146,30 +154,40 @@ async function main() {
         });
 
         log('✅', `TCP Connected!`);
+        
+        // อ่าน Banner ทักทายจาก PBX ก่อน "Phonik PABX Telnet system\r\n"
+        const banner = await readUntil(socket, TERMINATOR);
+        log('📩', `Banner: ${banner.trim()}`);
     } catch (err) {
-        log('❌', `TCP Connection ล้มเหลว: ${err.message}`);
-        log('💡', `ลอง: node probe-pbx.js ${HOST} ${PORT} — เพื่อวิเคราะห์ปัญหาก่อน`);
+        log('❌', `TCP Connection / Banner ล้มเหลว: ${err.message}`);
         process.exit(1);
     }
 
     separator();
 
-    // ── Ping ก่อน (VERS) เพื่อยืนยันว่าตู้พูดภาษาเดียวกัน ──
-    log('⏳', 'ส่ง Ping (VERS) เพื่อยืนยัน Protocol...');
-
+    // ── Authenticate & Ping ──
     try {
-        const versCmd = buildGetVersion();
-        const versResp = await sendCommand(socket, versCmd);
-        const versParsed = parseResponse(versResp);
+        log('⏳', 'ส่งคำสั่ง Authenticate (tcmd=1)...');
+        let resp = await sendCommand(socket, '..tcmd=1\r\n');
+        log('📩', `Raw: ${resp.trim()}`);
 
+        log('⏳', 'ส่ง Ping (VERS) เพื่อยืนยัน Protocol...');
+        resp = await sendCommand(socket, buildGetVersion());
+        log('📩', `Raw: ${resp.trim()}`);
+        
+        const versParsed = parseResponse(resp);
         if (versParsed.error) {
             log('⚠️', `PBX ตอบกลับผิดปกติ: ${versParsed.errorMessage}`);
-            log('💡', 'ตู้อาจใช้ Protocol ต่างจากที่คาดไว้ — ดำเนินการต่อด้วยความระมัดระวัง');
         } else {
             log('✅', `PBX ตอบกลับ! Firmware: ${versParsed.value}`);
         }
+
+        log('⏳', 'ส่งคำสั่ง Authenticate (PASS=1234)...');
+        resp = await sendCommand(socket, '..PASS=1234\r\n');
+        log('📩', `Raw: ${resp.trim()}`);
+
     } catch (err) {
-        log('⚠️', `Ping ล้มเหลว: ${err.message} — ดำเนินการต่อ...`);
+        log('⚠️', `Authentication / Ping ล้มเหลว: ${err.message}`);
     }
 
     separator();
@@ -190,18 +208,20 @@ async function main() {
         }
 
         log('⏳', `กำลังส่ง: ${description}`);
-        log('📤', `Raw: ${command.replace(/\r\n/, '\\r\\n')}`);
+        log('📤', `Raw: ${command.replace(/\\r\\n/, '\\\\r\\\\n')}`);
 
         const response = await sendCommand(socket, command);
         const parsed = parseResponse(response);
 
-        log('📥', `Raw: ${response.replace(/\r\n/, '\\r\\n')}`);
+        log('📥', `Raw: ${response.replace(/\\r\\n/, '\\\\r\\\\n')}`);
 
         if (parsed.error) {
             log('❌', `PBX ตอบ Error: ${parsed.errorMessage}`);
         } else {
-            const statusMap = { '0': 'OFF (ตัดไฟ)', '1': 'ON (จ่ายไฟ)', '2': 'MAINTENANCE', '3': 'OUT_OF_ORDER' };
-            const statusLabel = statusMap[parsed.value] || parsed.value;
+            // response จาก PBX กรณี PWER คือ ==PWER1017=off หรือ ==PWER1017=on
+            let statusLabel = parsed.value;
+            if (statusLabel === 'on') statusLabel = 'ON (จ่ายไฟ)';
+            if (statusLabel === 'off') statusLabel = 'OFF (ตัดไฟ)';
 
             if (ACTION === 'status') {
                 log('✅', `ห้อง ${ROOM} สถานะปัจจุบัน: ${statusLabel}`);

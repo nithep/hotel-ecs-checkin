@@ -1,6 +1,6 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { LayoutDashboard, QrCode } from 'lucide-react';
+import { LayoutDashboard, QrCode, Wifi } from 'lucide-react';
 
 const Layout = () => {
   const location = useLocation();
@@ -85,6 +85,23 @@ const Layout = () => {
                   />
                 )}
                 <span className="hidden sm:inline">Manual</span>
+              </Link>
+
+              <Link
+                to="/wifi"
+                className={`relative px-3 py-2 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                  location.pathname === '/wifi' ? 'text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800/50'
+                }`}
+              >
+                {location.pathname === '/wifi' && (
+                  <motion.div
+                    layoutId="nav-pill"
+                    className="absolute inset-0 bg-slate-800 rounded-md -z-10"
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                  />
+                )}
+                <Wifi size={18} />
+                <span className="hidden sm:inline">Wi-Fi</span>
               </Link>
             </nav>
           </div>

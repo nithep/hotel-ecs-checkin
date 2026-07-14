@@ -1,9 +1,9 @@
 'use strict';
 
 /**
- * @file transport/serial.js — Serial RS-232 Transport for Phonik PBX
+ * @file transport/serial.js — พอร์ต LAN ของPBX Transport for Phonik PBX
  *
- * ใช้ `serialport` library สำหรับเชื่อมต่อกับ PBX ผ่าน Serial RS-232.
+ * ใช้ `serialport` library สำหรับเชื่อมต่อกับ PBX ผ่าน พอร์ต LAN ของPBX.
  * Text-based ASCII mode — **ไม่ใช่ binary hex**.
  *
  * Interface เหมือนกับ TcpTransport เพื่อให้ swap ได้โดย connector ไม่ต้องเปลี่ยนโค้ด.
@@ -28,7 +28,7 @@ const DEFAULT_BAUD_RATE = 9600;
 const DEFAULT_TIMEOUT_MS = 5000;
 
 /**
- * Serial RS-232 Transport สำหรับสื่อสารกับ Phonik PBX.
+ * พอร์ต LAN ของPBX Transport สำหรับสื่อสารกับ Phonik PBX.
  *
  * @extends EventEmitter
  * @fires SerialTransport#connected
@@ -84,7 +84,7 @@ class SerialTransport extends EventEmitter {
   }
 
   /**
-   * เชื่อมต่อกับ PBX ผ่าน Serial RS-232.
+   * เชื่อมต่อกับ PBX ผ่าน พอร์ต LAN ของPBX.
    *
    * @param {string} path - Serial port path (e.g. '/dev/ttyUSB0', 'COM3')
    * @param {number} [baudRate=9600] - Baud rate
