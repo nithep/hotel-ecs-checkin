@@ -188,3 +188,13 @@
   - 🌐 **Network Indicator Bugfix:** ตรวจพบและแก้ไขปัญหา Windows NCSI แสดงสถานะ "ไม่มีการเข้าถึงอินเทอร์เน็ต" บน Wi-Fi ซึ่งเกิดจากการแทรกแซง DNS `127.0.2.2` ของ Cloudflare WARP โดยการปรับ Registry `UseGlobalDNS=1`
   - 🧩 **Vault Distillation:** บันทึกความรู้เรื่องพฤติกรรมปกติของ Split-Tunnel VPN ที่ไม่มี Default Gateway ลงใน Knowledge Base เพื่อป้องกัน Agent รุ่นถัดไปวิเคราะห์ผิดพลาดว่าเป็นข้อบกพร่อง
 - **สถานะ:** เสร็จสิ้น (Verified)
+
+### Phase 9: Premium UI/UX Overhaul & Auto-Eviction & Power Recovery
+- **วันที่:** 2026-07-16
+- **รายละเอียด:**
+  - 🎨 **City Blue & Cyber Black Theme:** ยกเลิกโทนสีทอง/เขียวเดิม และติดตั้งธีมสีน้ำเงินสว่าง "City Blue/Cyber Blue" (สไตล์ทีมเรือใบสีฟ้า Manchester City) ร่วมกับแอนิเมชันแสงออโรร่าสีฟ้าเคลื่อนไหวในส่วนพื้นหลัง และปรับแต่ง TerminalStatus เป็นแบบสแกนไลน์แฮกเกอร์เรืองแสงดูล้ำสมัยพรีเมียมขั้นสุด
+  - ⏰ **Auto-Eviction & Stay Extension:** พัฒนาระบบตัดไฟห้องพักอัตโนมัติเมื่อพักเกินเวลา ผ่าน `node-cron` รันเวลา 12:00 น. ทุกวัน โดยเพิ่มโครงสร้างฐานข้อมูล SQLite คอลัมน์ `checkout_date` พร้อมทั้งขยาย API Endpoint `/api/rooms/:id/extend` สำหรับให้พนักงานสามารถกดต่ออายุเข้าพักได้อย่างปลอดภัย
+  - 🔌 **Power Failure Recovery Validation:** สร้างสคริปต์ทดสอบ `test_power_recovery.js` เพื่อจำลองกรณี Pi ดับ (Cold Boot) และทำการส่งคำสั่งฟื้นฟูระบบไฟ (ROOM_ON) คืนห้องพักที่ยังไม่เช็คเอาท์ในระบบฐานข้อมูลโดยอัตโนมัติ ยืนยันความสามารถ Self-Healing 100%
+  - 🚀 **Raspberry Pi 4 Deploy & Troubleshooting:** นำโค้ดขึ้นระบบจริงบน Pi 4 สำเร็จ รันและควบคุมหลังบ้านด้วย PM2 แบบ Auto-Boot บน Systemd พร้อมแก้ไขปัญหา ERESOLVE บน npm สำหรับตัวอ่าน QR Code บนฝั่งบอร์ด Pi ด้วย `--legacy-peer-deps`
+- **สถานะ:** เสร็จสิ้น (Verified)
+
