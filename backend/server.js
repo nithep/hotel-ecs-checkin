@@ -14,6 +14,7 @@ const { GoogleNotifier } = require('./services/google_notifier');
 const { WiFiService } = require('./services/wifi_service');
 const apiKeyService = require('./services/apiKeyService');
 const rateLimit = require('express-rate-limit');
+const cronScheduler = require('./services/cron_scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -37,16 +38,19 @@ pbx.on('heartbeat', () => console.log(`[PBX] 💓 Heartbeat OK`));
 pbx.on('connection_lost', () => {
     console.log(`[PBX] ⚠️ Connection lost!`);
     if (telegramBot) telegramBot.sendSystemAlert('Connection Lost', 'การเชื่อมต่อกับตู้สาขา PBX ขาดหาย!');
+    if (typeof googleNotifier !== 'undefined' && googleNotifier) googleNotifier.sendSystemAlert('Connection Lost', 'การเชื่อมต่อกับตู้สาขา PBX ขาดหาย!', true);
 });
 pbx.on('reconnecting', (d) => console.log(`[PBX] 🔄 Reconnecting (${d.attempt}/${d.maxAttempts})...`));
 pbx.on('reconnected', () => {
     console.log(`[PBX] ✅ Reconnected!`);
     if (telegramBot) telegramBot.sendSystemAlert('Connection Restored', 'เชื่อมต่อกับตู้สาขา PBX สำเร็จแล้ว');
+    if (typeof googleNotifier !== 'undefined' && googleNotifier) googleNotifier.sendSystemAlert('Connection Restored', 'เชื่อมต่อกับตู้สาขา PBX สำเร็จแล้ว', false);
     syncPbxStateWithDatabase();
 });
 pbx.on('error', (err) => {
     console.error(`[PBX] ❌ Error:`, err.message);
     if (telegramBot) telegramBot.sendSystemAlert('PBX Error', err.message);
+    if (typeof googleNotifier !== 'undefined' && googleNotifier) googleNotifier.sendSystemAlert('PBX Error', err.message, true);
 });
 
 // Middleware
@@ -288,11 +292,17 @@ app.post('/api/checkin', async (req, res) => {
         }
 
         // Persist to Database with PDPA data
+        // Calculate default checkout date (12:00 PM on the next day + any extra days)
+        const numDays = days ? parseInt(days, 10) : 1;
+        const now = new Date();
+        const checkoutDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + numDays, 12, 0, 0);
+        
         const dbOptions = {
             guestName,
             guestEmail,
             consentGivenAt: pdpaConsent ? new Date().toISOString() : null,
-            consentIp: req.ip
+            consentIp: req.ip,
+            checkoutDate: checkoutDateTime.toISOString()
         };
         db.updateRoomState(roomNumber, 'occupied', true, dbOptions, (err) => {
             if (err) return res.status(500).json({ error: 'Database update failed' });
@@ -310,6 +320,34 @@ app.post('/api/checkin', async (req, res) => {
         console.error(`[API] Check-in failed for Room ${roomNumber}:`, err.message);
         res.status(500).json({ error: `PBX command failed: ${err.message}` });
     }
+});
+
+// ─── Extend Stay ──────────────────────────────────────────────────────────
+app.post('/api/rooms/:id/extend', async (req, res) => {
+    const roomId = req.params.id;
+    const { days = 1 } = req.body;
+    
+    db.getAllRooms((err, rooms) => {
+        if (err) return res.status(500).json({ error: 'Database error' });
+        
+        const room = rooms.find(r => r.id == roomId);
+        if (!room || room.status !== 'occupied') {
+            return res.status(400).json({ error: 'Room is not occupied' });
+        }
+        
+        const currentCheckout = room.checkout_date ? new Date(room.checkout_date) : new Date();
+        // Add days to the current checkout date
+        currentCheckout.setDate(currentCheckout.getDate() + parseInt(days, 10));
+        // Ensure time is 12:00 PM
+        currentCheckout.setHours(12, 0, 0, 0);
+        
+        db.extendRoomStay(roomId, currentCheckout.toISOString(), (extErr) => {
+            if (extErr) return res.status(500).json({ error: 'Failed to update checkout date' });
+            
+            console.log(`[API] Room ${roomId} stay extended to ${currentCheckout.toISOString()}`);
+            res.json({ success: true, message: 'Stay extended successfully', newCheckoutDate: currentCheckout.toISOString() });
+        });
+    });
 });
 
 // ─── Check-out (ผ่าน Safety Pipeline) ─────────────────────────────────────
@@ -809,6 +847,19 @@ app.get('/api/audit/events', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// System Monitoring & Reporting Routes
+// ═══════════════════════════════════════════════════════════════════════════
+
+app.get('/api/system/report', async (req, res) => {
+    try {
+        const report = await cronScheduler.generateAndSendReport(db, googleNotifier, pbx);
+        res.json({ success: true, report });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // Telemetry & SSE Stream (/api/telemetry/stream)
 // ═══════════════════════════════════════════════════════════════════════════
 const os = require('os');
@@ -910,6 +961,9 @@ async function startServer() {
     } catch (err) {
         console.warn(`[PBX] ⚠️ PBX connection failed: ${err.message} — server will start anyway`);
     }
+
+    // Initialize daily reporting cronjob
+    cronScheduler.startCronJobs(db, googleNotifier, pbx);
 
     app.listen(PORT, '0.0.0.0', () => {
         const os = require('os');

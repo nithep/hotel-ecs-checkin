@@ -148,6 +148,54 @@ class GoogleNotifier {
         return this._send(message);
     }
 
+    /**
+     * ส่งการแจ้งเตือนสถานะระบบ (System Alert / Reports)
+     * @param {string} title - หัวข้อการแจ้งเตือน
+     * @param {string} message - ข้อความรายละเอียด
+     * @param {boolean} isError - เป็นข้อความเตือน Error หรือไม่ (เพื่อปรับเปลี่ยน Icon)
+     */
+    async sendSystemAlert(title, message, isError = true) {
+        if (!this.isChatActive()) return;
+
+        const payload = {
+            cardsV2: [
+                {
+                    cardId: `alert_${Date.now()}`,
+                    card: {
+                        header: {
+                            title: title,
+                            subtitle: 'System Notification',
+                            imageUrl: isError ? 'https://cdn-icons-png.flaticon.com/512/1008/1008928.png' : 'https://cdn-icons-png.flaticon.com/512/190/190411.png',
+                            imageType: 'CIRCLE'
+                        },
+                        sections: [
+                            {
+                                widgets: [
+                                    {
+                                        decoratedText: {
+                                            topLabel: 'Message',
+                                            text: `<b>${message}</b>`,
+                                            startIcon: { knownIcon: isError ? 'WARNING' : 'DESCRIPTION' }
+                                        }
+                                    },
+                                    {
+                                        decoratedText: {
+                                            topLabel: 'Time',
+                                            text: new Date().toLocaleString('th-TH'),
+                                            startIcon: { knownIcon: 'CLOCK' }
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            ]
+        };
+
+        return this._send(payload);
+    }
+
     async _send(payload) {
         try {
             console.log(`[GOOGLE CHAT] 📤 Sending webhook to: ${this.chatWebhookUrl.substring(0, 50)}...`);

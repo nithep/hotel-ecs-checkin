@@ -51,11 +51,14 @@ const TerminalStatus = () => {
   };
 
   return (
-    <div className="bg-[#0f1115] border border-slate-800/60 rounded-2xl overflow-hidden shadow-2xl flex flex-col md:flex-row">
+    <div className="bg-hotel-dark/80 backdrop-blur-xl border border-hotel-city/20 rounded-2xl overflow-hidden shadow-[0_0_40px_rgba(2,132,199,0.15)] flex flex-col md:flex-row relative group">
+      {/* Scanline Effect Overlay */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[linear-gradient(transparent_50%,rgba(0,0,0,1)_50%)] bg-[length:100%_4px] z-20"></div>
+      
       {/* Metrics Sidebar */}
-      <div className="bg-[#15181e] p-6 border-b md:border-b-0 md:border-r border-slate-800/60 w-full md:w-64 flex flex-col gap-6">
+      <div className="bg-[#050a12]/90 p-6 border-b md:border-b-0 md:border-r border-hotel-city/20 w-full md:w-64 flex flex-col gap-6 relative z-10">
         <div className="flex items-center gap-3 text-slate-200">
-          <div className="p-2 bg-hotel-accent/10 rounded-lg text-hotel-accent">
+          <div className="p-2 bg-hotel-city/10 rounded-lg text-hotel-city shadow-[0_0_15px_rgba(56,189,248,0.3)]">
             <Server size={20} />
           </div>
           <div>
@@ -89,7 +92,7 @@ const TerminalStatus = () => {
             </div>
             <div className="h-1.5 bg-slate-800 rounded-full overflow-hidden">
               <motion.div 
-                className="h-full bg-hotel-accent"
+                className="h-full bg-hotel-city shadow-[0_0_10px_rgba(108,171,221,0.8)]"
                 initial={{ width: 0 }}
                 animate={{ width: `${ram}%` }}
                 transition={{ duration: 0.5 }}
@@ -119,18 +122,18 @@ const TerminalStatus = () => {
       </div>
 
       {/* Logs View */}
-      <div className="p-6 flex-1 bg-[#0f1115] relative overflow-hidden">
+      <div className="p-6 flex-1 bg-[#02050a] relative overflow-hidden z-10">
         <div className="flex items-center justify-between mb-4">
-          <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500 flex items-center gap-2">
+          <h4 className="text-xs font-semibold uppercase tracking-widest text-hotel-city/70 flex items-center gap-2">
             <Activity size={14} /> System Logs
           </h4>
-          <span className="flex h-2 w-2 relative">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+          <span className="flex h-2.5 w-2.5 relative">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-hotel-city opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-hotel-accent shadow-[0_0_8px_rgba(56,189,248,1)]"></span>
           </span>
         </div>
         
-        <div className="font-mono text-[11px] sm:text-xs text-slate-400 leading-relaxed space-y-1.5">
+        <div className="font-mono text-[11px] sm:text-xs text-hotel-city/80 leading-relaxed space-y-1.5 tracking-tight">
           <AnimatePresence>
             {logs.map((log) => (
               <motion.div
@@ -139,8 +142,8 @@ const TerminalStatus = () => {
                 animate={{ opacity: 1, x: 0 }}
                 className={`pl-3 border-l-2 py-1 ${
                   log.type === 'pbx' 
-                    ? 'border-hotel-accent text-hotel-accent/90 bg-hotel-accent/5' 
-                    : 'border-slate-700 hover:bg-slate-800/30'
+                    ? 'border-hotel-accent text-hotel-accent bg-hotel-accent/10 drop-shadow-[0_0_5px_rgba(56,189,248,0.6)]' 
+                    : 'border-slate-800 hover:bg-white/5 hover:text-hotel-city'
                 }`}
               >
                 {log.text}
@@ -150,7 +153,7 @@ const TerminalStatus = () => {
         </div>
         
         {/* Decorative background blur */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-hotel-accent/5 blur-[80px] rounded-full pointer-events-none" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-hotel-glow/10 blur-[100px] rounded-full pointer-events-none" />
       </div>
     </div>
   );

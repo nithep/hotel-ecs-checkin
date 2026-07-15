@@ -319,80 +319,80 @@ const Dashboard = () => {
       </AnimatePresence>
 
       {/* Header & Main Stats */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 relative z-10">
         <div>
-          <h1 className="text-4xl font-bold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-slate-100 via-hotel-accent to-slate-400">
+          <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-hotel-city to-hotel-accent drop-shadow-lg">
             Hotel ECS Dashboard
           </h1>
-          <p className="text-slate-400 mt-1.5 flex items-center gap-2">
-            <span className="relative flex h-2.5 w-2.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+          <p className="text-slate-400 mt-2 flex items-center gap-2 font-medium">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-hotel-accent opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-hotel-accent shadow-[0_0_10px_rgba(56,189,248,0.8)]"></span>
             </span>
             เชื่อมต่อตู้สาขา Phonik PBX สำเร็จ (โหมด Live/Simulator)
           </p>
-          <div className="mt-4">
+          <div className="mt-5">
             <a
               href="https://meet.google.com/new"
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-hotel-accent/10 hover:bg-hotel-accent/20 border border-hotel-accent/30 text-hotel-accent rounded-lg text-sm font-semibold transition-all hover:shadow-[0_0_15px_rgba(212,175,55,0.2)]"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-hotel-city/10 hover:bg-hotel-city/20 border border-hotel-city/30 text-hotel-city rounded-xl text-sm font-semibold transition-all hover:shadow-[0_0_20px_rgba(108,171,221,0.3)] active:scale-95"
             >
-              <Video size={16} />
+              <Video size={18} />
               เปิด Virtual Kiosk (รอรับสายแขก)
             </a>
           </div>
         </div>
 
         {/* Dynamic Navigation Tabs */}
-        <div className="flex bg-slate-950 p-1.5 rounded-xl border border-slate-900 w-full lg:w-auto overflow-x-auto">
+        <div className="flex bg-hotel-dark/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10 w-full lg:w-auto overflow-x-auto shadow-inner">
           <button
             onClick={() => setActiveTab('rooms')}
-            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
               activeTab === 'rooms' 
-                ? 'bg-hotel-card text-hotel-accent shadow-lg border border-slate-800' 
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <BedDouble size={16} />
+            <BedDouble size={18} />
             สถานะห้องพัก ({stats.total})
           </button>
           <button
             onClick={() => setActiveTab('approvals')}
-            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 relative whitespace-nowrap ${
+            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 relative whitespace-nowrap ${
               activeTab === 'approvals' 
-                ? 'bg-hotel-card text-hotel-accent shadow-lg border border-slate-800' 
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <ShieldAlert size={16} />
+            <ShieldAlert size={18} />
             ค้างการอนุมัติ
             {stats.pending > 0 && (
-              <span className="absolute -top-1 -right-1 bg-hotel-danger text-white text-xs px-2 py-0.5 rounded-full font-bold animate-pulse">
+              <span className="absolute -top-2 -right-2 bg-hotel-danger text-white text-xs px-2 py-0.5 rounded-full font-bold shadow-[0_0_10px_rgba(225,29,72,0.6)] animate-pulse">
                 {stats.pending}
               </span>
             )}
           </button>
           <button
             onClick={() => setActiveTab('audit')}
-            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
               activeTab === 'audit' 
-                ? 'bg-hotel-card text-hotel-accent shadow-lg border border-slate-800' 
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <FileText size={16} />
-            ประวัติความปลอดภัย (Audit Log)
+            <FileText size={18} />
+            ประวัติ (Audit Log)
           </button>
           <button
             onClick={() => setActiveTab('developer')}
-            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 whitespace-nowrap ${
+            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
               activeTab === 'developer' 
-                ? 'bg-hotel-card text-hotel-accent shadow-lg border border-slate-800' 
-                : 'text-slate-400 hover:text-white'
+                ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
+                : 'text-slate-400 hover:text-white hover:bg-white/5'
             }`}
           >
-            <Code size={16} />
+            <Code size={18} />
             Open API
           </button>
         </div>
@@ -459,9 +459,9 @@ const Dashboard = () => {
                   key={room.id}
                   variants={itemVariants}
                   layout
-                  className="glass-panel rounded-2xl p-5 hover:border-hotel-accent/50 hover:shadow-[0_0_30px_rgba(212,175,55,0.15)] transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]"
+                  className="glass-panel rounded-2xl p-5 hover:border-hotel-accent/50 hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]"
                 >
-                  <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-3xl opacity-10 bg-hotel-accent" />
+                  <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-3xl opacity-15 bg-hotel-accent" />
                   
                   <div className="flex justify-between items-start mb-4">
                     <div>
@@ -513,7 +513,7 @@ const Dashboard = () => {
               className="space-y-4"
             >
               {pendingApprovals.length === 0 ? (
-                <div className="bg-hotel-card rounded-2xl border border-slate-900 p-12 text-center text-slate-500 max-w-xl mx-auto flex flex-col items-center">
+                <div className="bg-hotel-card/50 backdrop-blur-md rounded-2xl border border-white/5 p-12 text-center text-slate-500 max-w-xl mx-auto flex flex-col items-center shadow-inner">
                   <ShieldAlert className="text-slate-600 mb-3" size={48} />
                   <h3 className="text-lg font-bold text-slate-300">ไม่มีรายการค้างอนุมัติ</h3>
                   <p className="text-sm mt-1">คำสั่งเสี่ยงสูงทั้งหมดถูกดำเนินการหรือถูกปฏิเสธแล้ว</p>

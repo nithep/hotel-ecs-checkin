@@ -181,3 +181,10 @@
   - 💻 **Developer Portal:** เพิ่มแท็บ 'Open API' ใน Dashboard ให้แอดมินสร้างและเพิกถอน API Key ได้
   - 🛠️ **Self-Healing & DB Migration:** แก้ไขบั๊กการตัดศูนย์เลขห้องพัก (101-106) บน PBX, เพิ่มระบบ Auth บน Auto-reconnect และทำระบบ Auto-Migration บน SQLite
 - **สถานะ:** เสร็จสิ้น (Verified)
+
+### การซ่อมบำรุงเพิ่มเติม (Maintenance & Troubleshooting)
+- **วันที่:** 2026-07-15
+- **รายละเอียด:**
+  - 🌐 **Network Indicator Bugfix:** ตรวจพบและแก้ไขปัญหา Windows NCSI แสดงสถานะ "ไม่มีการเข้าถึงอินเทอร์เน็ต" บน Wi-Fi ซึ่งเกิดจากการแทรกแซง DNS `127.0.2.2` ของ Cloudflare WARP โดยการปรับ Registry `UseGlobalDNS=1`
+  - 🧩 **Vault Distillation:** บันทึกความรู้เรื่องพฤติกรรมปกติของ Split-Tunnel VPN ที่ไม่มี Default Gateway ลงใน Knowledge Base เพื่อป้องกัน Agent รุ่นถัดไปวิเคราะห์ผิดพลาดว่าเป็นข้อบกพร่อง
+- **สถานะ:** เสร็จสิ้น (Verified)

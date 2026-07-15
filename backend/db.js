@@ -20,7 +20,8 @@ function initDb() {
             guest_name TEXT,
             guest_email TEXT,
             consent_given_at TEXT,
-            consent_ip TEXT
+            consent_ip TEXT,
+            checkout_date TEXT
         )`);
 
         // Check and migrate columns if table already existed but is missing PDPA columns
@@ -34,7 +35,8 @@ function initDb() {
                 { name: 'guest_name', type: 'TEXT' },
                 { name: 'guest_email', type: 'TEXT' },
                 { name: 'consent_given_at', type: 'TEXT' },
-                { name: 'consent_ip', type: 'TEXT' }
+                { name: 'consent_ip', type: 'TEXT' },
+                { name: 'checkout_date', type: 'TEXT' }
             ];
 
             migrations.forEach(m => {
@@ -93,7 +95,7 @@ function updateRoomState(id, status, power, options = {}, callback) {
     if (status === 'vacant') {
         // Data Anonymization on checkout (PDPA)
         db.run(
-            "UPDATE rooms SET status = ?, power = ?, guest_name = NULL, guest_email = NULL, consent_given_at = NULL, consent_ip = NULL WHERE id = ?",
+            "UPDATE rooms SET status = ?, power = ?, guest_name = NULL, guest_email = NULL, consent_given_at = NULL, consent_ip = NULL, checkout_date = NULL WHERE id = ?",
             [status, power ? 1 : 0, id],
             function (err) {
                 cb(err, { changes: this.changes });
@@ -102,8 +104,8 @@ function updateRoomState(id, status, power, options = {}, callback) {
     } else {
         // On Check-in
         db.run(
-            "UPDATE rooms SET status = ?, power = ?, guest_name = ?, guest_email = ?, consent_given_at = ?, consent_ip = ? WHERE id = ?",
-            [status, power ? 1 : 0, opts.guestName || null, opts.guestEmail || null, opts.consentGivenAt || null, opts.consentIp || null, id],
+            "UPDATE rooms SET status = ?, power = ?, guest_name = ?, guest_email = ?, consent_given_at = ?, consent_ip = ?, checkout_date = ? WHERE id = ?",
+            [status, power ? 1 : 0, opts.guestName || null, opts.guestEmail || null, opts.consentGivenAt || null, opts.consentIp || null, opts.checkoutDate || null, id],
             function (err) {
                 cb(err, { changes: this.changes });
             }
@@ -111,8 +113,19 @@ function updateRoomState(id, status, power, options = {}, callback) {
     }
 }
 
+function extendRoomStay(id, newCheckoutDate, callback) {
+    db.run(
+        "UPDATE rooms SET checkout_date = ? WHERE id = ?",
+        [newCheckoutDate, id],
+        function (err) {
+            callback(err, { changes: this.changes });
+        }
+    );
+}
+
 module.exports = {
     db,
     getAllRooms,
-    updateRoomState
+    updateRoomState,
+    extendRoomStay
 };
