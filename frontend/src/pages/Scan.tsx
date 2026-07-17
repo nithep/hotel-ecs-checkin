@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QrCode, ScanLine, CheckCircle2, XCircle, Bed, User, ArrowRight } from 'lucide-react';
+import liff from '@line/liff';
 
 type ScanStatus = 'idle' | 'scanning' | 'success' | 'error';
 type FlowType = 'checkin' | 'checkout';
@@ -21,6 +22,24 @@ const Scan = () => {
   const [guestName, setGuestName] = useState<string>('');
   const [pdpaConsent, setPdpaConsent] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+  const [lineProfile, setLineProfile] = useState<any>(null);
+
+  useEffect(() => {
+    const initLiff = async () => {
+      try {
+        const liffId = import.meta.env.VITE_LIFF_ID || '2010634930-gRJCLqbu';
+        await liff.init({ liffId });
+        if (liff.isLoggedIn()) {
+          const profile = await liff.getProfile();
+          setLineProfile(profile);
+          setGuestName(profile.displayName); // Auto-fill
+        }
+      } catch (err) {
+        console.error('LIFF init failed', err);
+      }
+    };
+    initLiff();
+  }, []);
 
   const fetchRooms = async () => {
     try {
@@ -196,13 +215,23 @@ const Scan = () => {
                       <User size={14} className="text-hotel-accent" />
                       ชื่อผู้เข้าพัก (Guest Name)
                     </label>
-                    <input
-                      type="text"
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      placeholder="กรอกชื่อ-นามสกุลของคุณ..."
-                      className="w-full bg-slate-950 border border-slate-900 focus:border-hotel-accent focus:ring-1 focus:ring-hotel-accent rounded-xl py-3 px-4 text-slate-200 text-sm outline-none transition-all"
-                    />
+                    {lineProfile ? (
+                      <div className="flex items-center gap-4 bg-[#00B900]/10 border border-[#00B900]/30 p-3 rounded-xl">
+                        <img src={lineProfile.pictureUrl} alt="LINE Profile" className="w-10 h-10 rounded-full border-2 border-[#00B900]" />
+                        <div>
+                          <p className="text-xs text-[#00B900] font-bold">ยืนยันตัวตนผ่าน LINE แล้ว</p>
+                          <p className="text-white text-sm font-medium">{lineProfile.displayName}</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <input
+                        type="text"
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        placeholder="กรอกชื่อ-นามสกุลของคุณ..."
+                        className="w-full bg-slate-950 border border-slate-900 focus:border-hotel-accent focus:ring-1 focus:ring-hotel-accent rounded-xl py-3 px-4 text-slate-200 text-sm outline-none transition-all"
+                      />
+                    )}
                   </div>
                 )}
               </div>

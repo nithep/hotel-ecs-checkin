@@ -5,8 +5,10 @@ import { QrCode, MonitorSmartphone, CheckCircle2 } from 'lucide-react';
 const QRCodeGenerator: React.FC = () => {
   const [roomNumber, setRoomNumber] = useState<string>('101');
   
-  // สร้าง URL ของจริงตามโดเมนที่ระบุในแผน (hotel.nithep.com)
-  const scanUrl = `https://hotel.nithep.com/scan?room=${roomNumber}`;
+  // อ่าน LIFF ID จาก Environment
+  const liffId = import.meta.env.VITE_LIFF_ID || '2010634930-gRJCLqbu';
+  // เปลี่ยนไปใช้ URL ของ LINE LIFF
+  const scanUrl = `https://liff.line.me/${liffId}?room=${roomNumber}`;
 
   const availableRooms = ['101', '102', '103', '104', '105', '106'];
 
