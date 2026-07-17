@@ -171,7 +171,6 @@
   - ปรับปรุง Layout, Dashboard, และหน้า GuestView 
 - **สถานะ:** เสร็จสิ้น (Verified)
 
-
 ### Phase 8: Commercialization & Enterprise Integration
 - **วันที่:** 2026-07-14
 - **รายละเอียด:**
@@ -196,5 +195,65 @@
   - ⏰ **Auto-Eviction & Stay Extension:** พัฒนาระบบตัดไฟห้องพักอัตโนมัติเมื่อพักเกินเวลา ผ่าน `node-cron` รันเวลา 12:00 น. ทุกวัน โดยเพิ่มโครงสร้างฐานข้อมูล SQLite คอลัมน์ `checkout_date` พร้อมทั้งขยาย API Endpoint `/api/rooms/:id/extend` สำหรับให้พนักงานสามารถกดต่ออายุเข้าพักได้อย่างปลอดภัย
   - 🔌 **Power Failure Recovery Validation:** สร้างสคริปต์ทดสอบ `test_power_recovery.js` เพื่อจำลองกรณี Pi ดับ (Cold Boot) และทำการส่งคำสั่งฟื้นฟูระบบไฟ (ROOM_ON) คืนห้องพักที่ยังไม่เช็คเอาท์ในระบบฐานข้อมูลโดยอัตโนมัติ ยืนยันความสามารถ Self-Healing 100%
   - 🚀 **Raspberry Pi 4 Deploy & Troubleshooting:** นำโค้ดขึ้นระบบจริงบน Pi 4 สำเร็จ รันและควบคุมหลังบ้านด้วย PM2 แบบ Auto-Boot บน Systemd พร้อมแก้ไขปัญหา ERESOLVE บน npm สำหรับตัวอ่าน QR Code บนฝั่งบอร์ด Pi ด้วย `--legacy-peer-deps`
+- **สถานะ:** เสร็จสิ้น (Verified)
+
+### การซ่อมบำรุงเพิ่มเติม (Maintenance & Troubleshooting) - PBX Network Fault
+- **วันที่:** 2026-07-17
+- **รายละเอียด:**
+  - 🚨 **Incident (Fault Alarm):** ระบบตรวจพบการแจ้งเตือน `Connection Lost` และ `PBX Error: connect EHOSTUNREACH 192.168.1.91:23` ซึ่งหมายถึงตู้สาขา PBX ขาดการเชื่อมต่อทางเครือข่าย หรือ Host ปลายทางออฟไลน์
+  - 🛡️ **Self-Healing Upgrade:** ปรับปรุงโค้ดใน `backend/server.js` ให้มี **Periodic Reconnection Loop** ทำงานอัตโนมัติเมื่อเกิด `reconnect_failed` (พยายามครบ 5 ครั้งแล้วล้มเหลว) โดยระบบจะหน่วงเวลา 60 วินาทีและพยายามเชื่อมต่อใหม่ไปเรื่อยๆ จนกว่าตู้ PBX จะกลับมาออนไลน์ ลดความจำเป็นในการ Manual Restart Server
+  - 📖 **Documentation:** เพิ่มคู่มือวิเคราะห์ปัญหาและตรวจสอบเครือข่ายสำหรับ `EHOSTUNREACH` (Physical Check, Ping Test, Port Accessibility) ลงใน `troubleshooting.md` เรียบร้อยแล้ว
+- **สถานะ:** เสร็จสิ้น (Verified)
+
+### การซ่อมบำรุงเพิ่มเติม (Maintenance & Troubleshooting) - Cloudflare Tunnel 502
+- **วันที่:** 2026-07-17
+- **รายละเอียด:**
+  - 🚨 **Incident (502 Bad Gateway):** เว็บ `hotel.nithep.com` ขึ้น 502 เนื่องจาก Router โรงแรมแจก IP (DHCP) ให้ Pi 4 เปลี่ยนไปจากเดิม (เช่น `.109` → `.94`)
+  - 🛠️ **Resolution:** ทำการเปลี่ยนเป้าหมาย Public Hostname ใน Cloudflare Zero Trust จาก IP Address (`192.168.1.109:3000`) เป็น Docker Container Name (`hotel-app:3000`) เพื่อให้ระบบ Online เสมอแม้ IP ภายนอกจะเปลี่ยน
+  - 📖 **Documentation & SOP:** 
+    - อัปเดต `raspberry-pi-setup.md` เพิ่มมาตรฐานการตั้งค่า Cloudflare
+    - อัปเดต `troubleshooting.md` เพิ่มวิธีการวิเคราะห์และแก้ปัญหา
+    - สร้าง Skill `Cloudflare_Tunnel_Setup` เป็น SOP มาตรฐานสำหรับ Agent ในอนาคต
+  - 🔑 **Credential Fix:** อัปเดตไฟล์ `~/.ssh/config` ของเครื่องผู้พัฒนาให้ชี้ไปยัง `User ecs-agent` ที่ถูกต้อง และเคลียร์ความเข้าใจเรื่อง `admin` (ไม่มีอยู่จริงบน Pi) เพื่อป้องกันปัญหา SSH Connection Refused (Fail2Ban)
+- **สถานะ:** เสร็จสิ้น (Verified)
+
+### การพัฒนาฟีเจอร์ใหม่ (Feature Development) - Smart Diagnostics & AI Assistant (Copilot)
+- **วันที่:** 2026-07-17
+- **รายละเอียด:**
+  - 🛠 **Diagnostics Engine:** สร้างสคริปต์ระบบวินิจฉัยสุขภาพของบอร์ด Pi 4 และระบบ IoT โดยเช็คพารามิเตอร์ของตู้ PBX (พอร์ต 23, สถานะ connection), เครือข่ายอินเทอร์เน็ตผ่าน TCP socket ไปยัง 8.8.8.8, สถานะความสมบูรณ์และขนาดไฟล์ของฐานข้อมูล SQLite, และทรัพยากร CPU/RAM/Uptime ของระบบ
+  - 🤖 **AI Assistant Backend:** สร้าง Route `/api/diagnostics/health` และ `/api/diagnostics/copilot` เพื่อรองรับการแชทถามตอบปัญหา โดยวิเคราะห์ผ่านสถานะสุขภาพของระบบแบบ real-time และดึงข้อมูลเฉพาะส่วนจาก `troubleshooting.md` ร่วมประมวลผลผ่าน Gemini 3.5 Flash API (และรองรับระบบ Local Rule-based assistant คอยวิเคราะห์ช่วยเหลือออฟไลน์หากไม่พบคีย์การ์ด AI)
+  - 🎨 **Frontend Layout & UI:** สร้างหน้า **Copilot** แดชบอร์ดแบบพรีเมียม (Grid แสดงสัญญาณไฟเขียว/ไฟแดงของฮาร์ดแวร์, แถบสถานะ CPU/RAM) และหน้าจอคุยกับ AI Copilot ที่มีปุ่มคัดลอกคำสั่ง Terminal (เช่น สั่งรีบูตระบบ, แก้ไข config) ไปรันต่อได้สะดวกรวดเร็ว
+- **สถานะ:** เสร็จสิ้น (Verified)
+
+### การบูรณาการ OpenRouter และการปรับปรุงความเสถียร AI Copilot (OpenRouter Integration & AI Stability Upgrade)
+- **วันที่:** 2026-07-17 (เข้าสู่เช้ามืด 2026-07-18)
+- **รายละเอียด:**
+  - 🚨 **Incident (403/401 API Blocked):** คีย์ Gemini API ของผู้ใช้ติดข้อจำกัดด้านความปลอดภัยของบัญชีองค์กรและนโยบายผู้ใช้งานใหม่จากฝั่ง Google ทำให้เกิด `403 Permission Denied` และเกิดปัญหาโควตาฟรีเป็นศูนย์ (`limit: 0` / `429 RESOURCE_EXHAUSTED`)
+  - 🛡️ **Hybrid Gateway Integration:** ปรับปรุงโค้ดใน `backend/server.js` ให้เป็น **ระบบเกตเวย์ AI ลูกผสม (Hybrid AI Gateway)** โดยรองรับทั้งคีย์ `GEMINI_API_KEY` (ติดต่อ Google Direct) และ `OPENROUTER_API_KEY` (ติดต่อ OpenRouter.ai)
+  - 🤖 **OpenRouter API & Model Fix:** เลือกเชื่อมโยงกับโมดูลพรีเมียม `google/gemini-2.5-flash` ผ่าน OpenRouter.ai (โดยตั้งค่าจำกัด `max_tokens: 2000` เพื่อจำกัดโควตาการคำนวณและประหยัดยอดเครดิตที่มีจำกัด) ช่วยปลดล็อคให้ระบบวิเคราะห์คุยภาษาไทยสดสามารถทำงานหน้างานได้จริง 100%
+  - 🛠️ **Diagnostics API Test:** ดำเนินการยิงทดสอบลูป API หลังติดตั้งและรีสตาร์ทคอนเทนเนอร์บน Pi 4 จริง ยืนยันผลลัพธ์การคุยตอบกลับเสร็จสิ้นด้วยดี ไร้ข้อผิดพลาด
+- **สถานะ:** เสร็จสิ้น (Verified)
+
+### การพัฒนาระบบความปลอดภัยแบบอิงบทบาท และการปรับปรุงรายงานประจำวัน (RBAC Security & Daily Operations Report Upgrade)
+- **วันที่:** 2026-07-17 (เข้าสู่เช้ามืด 2026-07-18)
+- **รายละเอียด:**
+  - 🔒 **Role-Based Access Control (RBAC):** พัฒนาโครงสร้างการยืนยันสิทธิ์ความปลอดภัย 3 ระดับ: Owner (เจ้าของระบบ), Staff (พนักงานต้อนรับ/วิศวกร) และ Guest (ผู้เข้าพัก) บนระบบหลังบ้านโดยใช้ JWT Token (`verifyOwnerToken`, `verifyStaffToken`, `verifyGuestToken`)
+  - 🔑 **PIN Control Console:** สร้างหน้าต่างความปลอดภัย PIN 4 หลัก (PIN Protection) ตกแต่งดีไซน์สวยงามพรีเมียม (Glassmorphism Dark Mode) เพื่อปลดล็อกแผงควบคุมระบบ และซ่อนแท็บควบคุมที่ละเอียดอ่อน (Audit Logs, Open API) จากพนักงานต้อนรับธรรมดาโดยอัตโนมัติ พร้อมบล็อก/อนุญาตตามเมนูอย่างมีระบบ
+  - 🌐 **Guest Portal Toggle & Whitelist:** ออกแบบหน้า Guest Control สวิตช์ปุ่ม Toggle ขนาดใหญ่ให้แก่แขกผู้เข้าพักในการเปิด/ปิดระบบไฟฟ้าห้องของตนเอง และเพิ่มตัวจับเวลานับถอยหลังก่อนหมดสิทธิ์เช็คเอาท์ พร้อมทำการ Whitelist แหล่งที่มา `'guest_portal'` ในระบบความปลอดภัย Approval Gate ปลดบล็อกไม่ให้มองสิทธิ์ปุ่มแขกผิดพลาดเป็น Manual Relay Override ที่ต้องได้รับการอนุมัติ (HR-05)
+  - 📊 **Daily Operations Report:** ปรับปรุง Scheduler สรุปรายงานรายวัน โดยยิง SQL ดึงสถิติจริง (เช็คอิน, เช็คเอาท์, NACK/Error) จากตาราง `approval_audit_events` และจัดส่งสรุปข้อมูล POST เข้าสู่ Google Sheets Webhook รายวัน และส่ง Card รายงานเข้าสู่ Google Chat
+  - 🧪 **Integration Test (RBAC Verified):** พัฒนาสคริปต์ตรวจสอบความปลอดภัย `test_rbac_security.js` ตรวจเช็ค API Endpoint สิทธิ์รวม 14 รายการ และรันผ่านเกณฑ์สำเร็จ 100% ยืนยันความปลอดภัยสูงสุดตามเป้าหมายของโครงการ
+- **สถานะ:** เสร็จสิ้น (Verified)
+
+### การติดตั้งระบบ PWA และปรับปรุง Responsive UI สำหรับมือถือ (PWA Integration & Mobile UI/UX Optimization)
+- **วันที่:** 2026-07-17 (เข้าสู่เช้ามืด 2026-07-18)
+- **รายละเอียด:**
+  - 📱 **Progressive Web App (PWA):** ติดตั้งปลั๊กอิน `vite-plugin-pwa` ลงในส่วนของ Frontend สำเร็จ และตั้งค่า Manifest ของแอปให้รันในโหมด `standalone` และ `portrait` พร้อมจัดการ Service Worker สำหรับแคชไฟล์ ช่วยให้พนักงานสามารถกด "Add to Home Screen" เพื่อติดตั้งลงบนหน้าจอมือถือและแสดงผลเต็มหน้าจอเสมือน Native App 100%
+  - 🧭 **Mobile Bottom Navigation:** ปรับปรุงโครงสร้างระบบนำทางใน `Layout.tsx` โดยแยกเป็นเมนูด้านบนสำหรับ Desktop และเมนูติดแน่นด้านล่างสำหรับมือถือ (Mobile Bottom Nav) พร้อมจัดสรรปุ่มไอคอนและคำอธิบาย 7 หน้าหลักได้อย่างพอเหมาะพอดี และเพิ่มระยะขอบด้านล่างของหน้าหลักเพื่อไม่ให้โดนเมนูด้านล่างบัง
+  - 🎨 **Responsive Layout Refactoring:**
+    - ปรับปรุง `<meta name="viewport">` ใน `index.html` ให้รองรับ `viewport-fit=cover` เพื่อแก้ไขการแสดงผลในส่วนรอยบากของหน้าจอสมาร์ทโฟน
+    - ปรับดีไซน์หน้าตัวสร้าง QR Code (`QRCodeGenerator.tsx`) ให้ลด Padding ลงบนมือถือ และให้รูป QR Code SVG ย่อขนาดได้ตามสัดส่วนจอภาพ ไม่ดันเนื้อหาส่วนอื่นล้น
+    - ปรับแผงป้อนรหัส PIN ล็อกคอนโซลของหน้า `Dashboard.tsx` ให้มีขนาดปุ่มและช่องไฟขนาดกระชับ เหมาะสำหรับการพิมพ์ผ่านนิ้วมือบนอุปกรณ์เคลื่อนที่
+    - ปรับแก้ข้อจำกัดความสูงของกล่องแชท AI ในหน้า `Copilot.tsx` ให้มีขนาดสูงคงที่พอดีสำหรับการคุยแบบลื่นไหลและไม่หดตัวเป็นศูนย์บนจอสมาร์ทโฟน
+  - 🧪 **Build Verification:** ตรวจสอบระบบโดยรันคำสั่ง `npm run build` ผ่านการคอมไพล์ TypeScript (`tsc -b`) และ Bundler ของ Vite สำเร็จลุล่วง 100% และสร้างไฟล์ Service Worker (`sw.js`) เรียบร้อยพร้อมใช้งานในระบบจริง
 - **สถานะ:** เสร็จสิ้น (Verified)
 

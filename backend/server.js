@@ -53,9 +53,112 @@ pbx.on('error', (err) => {
     if (typeof googleNotifier !== 'undefined' && googleNotifier) googleNotifier.sendSystemAlert('PBX Error', err.message, true);
 });
 
+// --- Periodic Reconnection Loop (Self-Healing) ---
+function scheduleReconnection() {
+    console.log(`[PBX] ⏳ Scheduling automatic reconnection in 60 seconds...`);
+    setTimeout(async () => {
+        if (pbx.state === 'DISCONNECTED') {
+            console.log(`[PBX] 🔄 Periodic Reconnection Loop: Attempting to connect again...`);
+            try {
+                await pbx.connect();
+                console.log(`[PBX] ✅ Periodic Reconnection successful.`);
+                if (telegramBot) telegramBot.sendSystemAlert('PBX Connection Restored', 'ระบบ Auto-Recovery (Self-Healing) เชื่อมต่อกับตู้สาขา PBX สำเร็จแล้ว');
+                if (typeof googleNotifier !== 'undefined' && googleNotifier) googleNotifier.sendSystemAlert('PBX Connection Restored', 'ระบบ Auto-Recovery (Self-Healing) เชื่อมต่อกับตู้สาขา PBX สำเร็จแล้ว', false);
+                syncPbxStateWithDatabase();
+            } catch (err) {
+                console.error(`[PBX] ❌ Periodic Reconnection Loop failed:`, err.message);
+                scheduleReconnection(); // Retry loop
+            }
+        }
+    }, 60000);
+}
+
+pbx.on('reconnect_failed', (d) => {
+    console.error(`[PBX] ❌ Reconnect failed after ${d.maxAttempts} attempts.`);
+    if (telegramBot) telegramBot.sendSystemAlert('PBX Fault Alarm', `เชื่อมต่อตู้สาขา PBX ล้มเหลวต่อเนื่อง ${d.maxAttempts} ครั้ง (Host Unreachable/Timeout) - ระบบจะพยายามเชื่อมต่อใหม่แบบวนซ้ำทุก 60 วินาทีอัตโนมัติ`);
+    if (typeof googleNotifier !== 'undefined' && googleNotifier) googleNotifier.sendSystemAlert('PBX Fault Alarm', `เชื่อมต่อตู้สาขา PBX ล้มเหลวต่อเนื่อง ${d.maxAttempts} ครั้ง (Host Unreachable/Timeout) - ระบบจะพยายามเชื่อมต่อใหม่แบบวนซ้ำทุก 60 วินาทีอัตโนมัติ`, true);
+    
+    scheduleReconnection();
+});
+
 // Middleware
 app.use(cors());
 app.use(express.json());
+
+// ─── Authentication & RBAC Middleware ──────────────────────────────────────
+const jwt = require('jsonwebtoken');
+const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_hotel_ecs_token_key_103r_v5';
+const FRONTDESK_PIN = process.env.FRONTDESK_PIN || '1234';
+const OWNER_PIN = process.env.OWNER_PIN || '9999';
+
+function verifyToken(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Access token is required' });
+    }
+    
+    jwt.verify(token, JWT_SECRET, (err, decoded) => {
+        if (err) {
+            console.error(`[JWT Verify Error] ${err.message}`);
+            return res.status(403).json({ error: 'Invalid or expired token' });
+        }
+        req.user = decoded;
+        next();
+    });
+}
+
+function verifyGuestToken(req, res, next) {
+    verifyToken(req, res, () => {
+        if (req.user.role !== 'guest') {
+            return res.status(403).json({ error: 'Access denied: Guests only' });
+        }
+        req.guestRoomNumber = req.user.roomNumber;
+        next();
+    });
+}
+
+function verifyStaffToken(req, res, next) {
+    verifyToken(req, res, () => {
+        if (req.user.role !== 'front_desk' && req.user.role !== 'owner') {
+            return res.status(403).json({ error: 'Access denied: Staff/Owner authorization required' });
+        }
+        next();
+    });
+}
+
+function verifyOwnerToken(req, res, next) {
+    verifyToken(req, res, () => {
+        if (req.user.role !== 'owner') {
+            return res.status(403).json({ error: 'Access denied: Owner authorization required' });
+        }
+        next();
+    });
+}
+
+// ─── PIN Verification API ──────────────────────────────────────────────────
+app.post('/api/auth/verify-pin', (req, res) => {
+    const { pin } = req.body;
+    if (!pin) {
+        return res.status(400).json({ error: 'PIN code is required' });
+    }
+    
+    let role = null;
+    if (pin === OWNER_PIN) {
+        role = 'owner';
+    } else if (pin === FRONTDESK_PIN) {
+        role = 'front_desk';
+    }
+    
+    if (!role) {
+        return res.status(401).json({ error: 'Invalid PIN code' });
+    }
+    
+    // Create JWT Token for Staff/Owner (expires in 8 hours)
+    const token = jwt.sign({ role }, JWT_SECRET, { expiresIn: '8h' });
+    res.json({ success: true, token, role });
+});
 
 const db = require('./db');
 
@@ -208,33 +311,81 @@ async function executeWithSafety(command, executeFn) {
     return { blocked: false, result };
 }
 
-// ─── State Synchronization ────────────────────────────────────────────────
-function syncPbxStateWithDatabase() {
-    console.log(`[SYNC] Starting State Synchronization...`);
-    db.getAllRooms(async (err, rooms) => {
-        if (err) {
-            console.error(`[SYNC] Failed to get rooms from DB:`, err.message);
-            return;
-        }
-
-        for (const room of rooms) {
-            try {
-                const isOccupied = room.status === 'occupied'; 
-                const pbxStatus = await pbx.getRoomStatus(room.id);
-                const isPbxOn = pbxStatus.status === 'ON';
-
-                if (isOccupied && !isPbxOn) {
-                    console.log(`[SYNC] Room ${room.id} is Occupied but PBX is OFF. Fixing (Auto-ON)...`);
-                    await pbx.checkIn(room.id, 'SyncRecovery');
-                } else if (!isOccupied && isPbxOn) {
-                    console.log(`[SYNC] Room ${room.id} is Vacant but PBX is ON. Fixing (Auto-OFF)...`);
-                    await pbx.checkOut(room.id);
-                }
-            } catch (syncErr) {
-                console.warn(`[SYNC] Skipped syncing room ${room.id}:`, syncErr.message);
+// ─── State Synchronization (Digital Twin Loop) ────────────────────────────
+async function syncPbxStateWithDatabase() {
+    console.log(`[SYNC] 🔄 Starting Digital Twin State Synchronization...`);
+    return new Promise((resolve) => {
+        db.getAllRooms(async (err, rooms) => {
+            if (err) {
+                console.error(`[SYNC] ❌ CRITICAL: Failed to get rooms from DB:`, err.message);
+                if (googleNotifier) googleNotifier.sendSystemAlert('🔴 CRITICAL: Sync Failed', `Digital Twin Sync ล้มเหลว: ${err.message}`, true);
+                return resolve({ success: false, error: err.message });
             }
-        }
-        console.log(`[SYNC] Synchronization Complete.`);
+
+            const syncResults = [];
+            for (const room of rooms) {
+                try {
+                    const isOccupied = room.status === 'occupied';
+                    const pbxStatus = await pbx.getRoomStatus(room.id);
+                    const isPbxOn = pbxStatus.status === 'ON';
+                    // [CRITICAL FIX] ตรวจสอบ power field ใน DB ด้วย ไม่ใช่แค่ status
+                    const isPowerCorrect = room.power === isPbxOn;
+
+                    if (isOccupied && !isPbxOn) {
+                        // DB=occupied แต่ PBX=OFF → สั่ง Auto-ON และ update DB
+                        console.log(`[SYNC] ⚠️  Room ${room.id}: DB=occupied, PBX=OFF → Auto-ON + DB update`);
+                        const result = await pbx.checkIn(room.id, 'SyncRecovery');
+                        if (result && result.success) {
+                            // Update DB power=true ให้ตรงกับ PBX
+                            db.updateRoomState(room.id, 'occupied', true, {}, (dbErr) => {
+                                if (dbErr) console.error(`[SYNC] ❌ DB update power failed for room ${room.id}:`, dbErr.message);
+                                else console.log(`[SYNC] ✅ Room ${room.id}: DB power updated to true (synced)`);
+                            });
+                            syncResults.push({ room: room.id, action: 'AUTO_ON', success: true });
+                        } else {
+                            console.error(`[SYNC] ❌ CRITICAL: Room ${room.id} Auto-ON failed (NACK)`);
+                            if (googleNotifier) googleNotifier.sendSystemAlert('⚠️ Sync Warning', `Room ${room.id}: DB=occupied แต่ตัดไฟ/ส่งคำสั่งไม่ได้ (NACK)`, true);
+                            syncResults.push({ room: room.id, action: 'AUTO_ON', success: false });
+                        }
+                    } else if (!isOccupied && isPbxOn) {
+                        // DB=vacant แต่ PBX=ON → สั่ง Auto-OFF และ update DB
+                        console.log(`[SYNC] ⚠️  Room ${room.id}: DB=vacant, PBX=ON → Auto-OFF + DB update`);
+                        const result = await pbx.checkOut(room.id);
+                        if (result && result.success) {
+                            db.updateRoomState(room.id, 'vacant', false, {}, (dbErr) => {
+                                if (dbErr) console.error(`[SYNC] ❌ DB update power failed for room ${room.id}:`, dbErr.message);
+                                else console.log(`[SYNC] ✅ Room ${room.id}: DB power updated to false (synced)`);
+                            });
+                            syncResults.push({ room: room.id, action: 'AUTO_OFF', success: true });
+                        } else {
+                            console.error(`[SYNC] ❌ CRITICAL: Room ${room.id} Auto-OFF failed (NACK)`);
+                            if (googleNotifier) googleNotifier.sendSystemAlert('⚠️ Sync Warning', `Room ${room.id}: DB=vacant แต่ตัดไฟไม่ได้ (NACK) - กรุณาตรวจสอบ`, true);
+                            syncResults.push({ room: room.id, action: 'AUTO_OFF', success: false });
+                        }
+                    } else if (!isPowerCorrect) {
+                        // [CRITICAL FIX] power field ใน DB ไม่ตรงกับ PBX status → ซ่อมแซม DB
+                        console.log(`[SYNC] 🔧 Room ${room.id}: power field mismatch (DB=${room.power}, PBX=${isPbxOn}) → Fixing DB...`);
+                        db.updateRoomState(room.id, room.status, isPbxOn, {}, (dbErr) => {
+                            if (dbErr) console.error(`[SYNC] ❌ DB power fix failed for room ${room.id}:`, dbErr.message);
+                            else console.log(`[SYNC] ✅ Room ${room.id}: DB power field corrected to ${isPbxOn}`);
+                        });
+                        syncResults.push({ room: room.id, action: 'POWER_FIX', success: true });
+                    } else {
+                        console.log(`[SYNC] ✅ Room ${room.id}: OK (status=${room.status}, power=${room.power}, PBX=${pbxStatus.status})`);
+                        syncResults.push({ room: room.id, action: 'OK', success: true });
+                    }
+                } catch (syncErr) {
+                    console.warn(`[SYNC] ⚠️  Skipped syncing room ${room.id}:`, syncErr.message);
+                    syncResults.push({ room: room.id, action: 'SKIPPED', success: false, error: syncErr.message });
+                }
+            }
+            const failed = syncResults.filter(r => !r.success);
+            if (failed.length > 0) {
+                console.error(`[SYNC] ❌ CRITICAL: ${failed.length} room(s) failed to sync:`, failed.map(r => r.room).join(', '));
+            }
+            console.log(`[SYNC] ✅ Synchronization Complete. Results:`, syncResults.length, `rooms checked.`);
+            resolve({ success: true, results: syncResults });
+        });
     });
 }
 
@@ -242,11 +393,37 @@ function syncPbxStateWithDatabase() {
 // API Routes
 // ═══════════════════════════════════════════════════════════════════════════
 
-// Get all rooms from Database
+// Get all rooms from Database (Anonymized for public / guests, full for staff)
 app.get('/api/rooms', (req, res) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    let isStaff = false;
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, JWT_SECRET);
+            if (decoded.role === 'front_desk' || decoded.role === 'owner') {
+                isStaff = true;
+            }
+        } catch (e) {
+            // Invalid token
+        }
+    }
+
     db.getAllRooms((err, rooms) => {
         if (err) return res.status(500).json({ error: err.message });
-        res.json({ success: true, rooms });
+        
+        if (isStaff) {
+            res.json({ success: true, rooms });
+        } else {
+            // Anonymize guest details for public / guests (PDPA Compliance)
+            const anonymizedRooms = rooms.map(r => ({
+                id: r.id,
+                status: r.status,
+                power: r.power
+            }));
+            res.json({ success: true, rooms: anonymizedRooms });
+        }
     });
 });
 
@@ -283,20 +460,28 @@ app.post('/api/checkin', async (req, res) => {
             return res.status(statusCode).json(safetyResult);
         }
 
+        // Calculate checkout date
+        const numDays = days ? parseInt(days, 10) : 1;
+        const now = new Date();
+        const checkoutDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + numDays, 12, 0, 0);
+
+        // Generate Guest Token (JWT)
+        const guestToken = jwt.sign(
+            { role: 'guest', roomNumber: String(roomNumber) },
+            JWT_SECRET,
+            { expiresIn: Math.max(60, Math.floor((checkoutDateTime.getTime() - Date.now()) / 1000)) + 's' }
+        );
+
         if (safetyResult.dryRun) {
             return res.json({
                 message: 'Check-in (Dry-run) successful',
                 trace_id: command.traceId,
                 hardware_status: safetyResult.result,
+                token: guestToken,
             });
         }
 
         // Persist to Database with PDPA data
-        // Calculate default checkout date (12:00 PM on the next day + any extra days)
-        const numDays = days ? parseInt(days, 10) : 1;
-        const now = new Date();
-        const checkoutDateTime = new Date(now.getFullYear(), now.getMonth(), now.getDate() + numDays, 12, 0, 0);
-        
         const dbOptions = {
             guestName,
             guestEmail,
@@ -314,6 +499,7 @@ app.post('/api/checkin', async (req, res) => {
                 message: 'Check-in successful',
                 trace_id: command.traceId,
                 hardware_status: safetyResult.result,
+                token: guestToken,
             });
         });
     } catch (err) {
@@ -323,7 +509,7 @@ app.post('/api/checkin', async (req, res) => {
 });
 
 // ─── Extend Stay ──────────────────────────────────────────────────────────
-app.post('/api/rooms/:id/extend', async (req, res) => {
+app.post('/api/rooms/:id/extend', verifyStaffToken, async (req, res) => {
     const roomId = req.params.id;
     const { days = 1 } = req.body;
     
@@ -358,11 +544,34 @@ app.post('/api/checkout', async (req, res) => {
         return res.status(400).json({ error: 'roomNumber is required' });
     }
 
+    // ─── Auth Verification for Checkout ───
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+    
+    if (!token) {
+        return res.status(401).json({ error: 'Access token is required for check-out' });
+    }
+    
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        // Allow if staff/owner OR if matching Guest token
+        const isStaff = decoded.role === 'front_desk' || decoded.role === 'owner';
+        const isMatchingGuest = decoded.role === 'guest' && String(decoded.roomNumber) === String(roomNumber);
+        
+        if (!isStaff && !isMatchingGuest) {
+            return res.status(403).json({ error: 'Access denied: Unauthorized to check-out this room' });
+        }
+        req.user = decoded;
+    } catch (err) {
+        return res.status(403).json({ error: 'Invalid or expired token for check-out' });
+    }
+
     console.log(`[API] Received Check-out Request for Room: ${roomNumber} (Dry-run: ${Boolean(dryRun || dry_run)})`);
 
     const command = buildCommand('ROOM_OFF', roomNumber, {
-        source: 'checkout_flow',
+        source: req.user.role === 'guest' ? 'guest_portal' : 'checkout_flow',
         flow: 'checkout',
+        requestedBy: req.user.role === 'guest' ? `guest:room_${roomNumber}` : `staff:${req.user.role}`,
         dryRun: Boolean(dryRun || dry_run),
     });
 
@@ -404,8 +613,66 @@ app.post('/api/checkout', async (req, res) => {
     }
 });
 
+// ─── Guest Control API (Token-Protected for single room) ───────────────────
+app.post('/api/rooms/guest-control', verifyGuestToken, async (req, res) => {
+    const { action } = req.body;
+    const roomNumber = req.guestRoomNumber;
+    
+    if (!action) {
+        return res.status(400).json({ error: 'action (ON/OFF) is required' });
+    }
+    
+    const commandType = action.toUpperCase() === 'ON' ? 'ROOM_ON' : 'ROOM_OFF';
+    console.log(`[API] [Guest Control] Room: ${roomNumber} -> ${action} (Verified by Guest JWT)`);
+    
+    const command = buildCommand(commandType, roomNumber, {
+        source: 'guest_portal',
+        flow: 'guest_control',
+        requestedBy: `guest:room_${roomNumber}`
+    });
+    
+    try {
+        const safetyResult = await executeWithSafety(command, async () => {
+            if (commandType === 'ROOM_ON') {
+                return await pbx.checkIn(roomNumber, 'Guest ON');
+            } else {
+                return await pbx.checkOut(roomNumber);
+            }
+        });
+        
+        if (safetyResult.blocked) {
+            const statusCode = safetyResult.reason === 'RATE_LIMITED' ? 429 : 202;
+            return res.status(statusCode).json(safetyResult);
+        }
+        
+        // Update Database state
+        const dbStatus = commandType === 'ROOM_ON' ? 'occupied' : 'vacant';
+        const isOccupied = commandType === 'ROOM_ON';
+        
+        db.updateRoomState(roomNumber, dbStatus, isOccupied, (err) => {
+            if (err) return res.status(500).json({ error: 'Database update failed' });
+            
+            // Notify Google Chat
+            googleNotifier.sendSystemAlert(
+                `⚡ Guest Control Command`,
+                `แขกห้อง <b>${roomNumber}</b> สั่ง <b>${action}</b> ไฟฟ้าในห้องของตนเอง<br>สถานะ PBX: ACK (สำเร็จ)`,
+                false
+            );
+            
+            res.json({
+                success: true,
+                message: `Command ${action} successful`,
+                hardware_status: safetyResult.result
+            });
+        });
+    } catch (err) {
+        console.error(`[API] Guest control failed for Room ${roomNumber}:`, err.message);
+        res.status(500).json({ error: `Command failed: ${err.message}` });
+    }
+});
+
 // Get room status directly from PBX
-app.get('/api/rooms/:id/status', async (req, res) => {
+app.get('/api/rooms/:id/status', verifyStaffToken, async (req, res) => {
     try {
         const status = await pbx.getRoomStatus(req.params.id);
         res.json({ success: true, ...status });
@@ -415,7 +682,7 @@ app.get('/api/rooms/:id/status', async (req, res) => {
 });
 
 // ─── Control Webhook (สำหรับ AppSheet / แอดมินบังคับเปิด-ปิด) ─────────────
-app.post('/api/rooms/control', async (req, res) => {
+app.post('/api/rooms/control', verifyStaffToken, async (req, res) => {
     const { roomNumber, action, source, dryRun } = req.body;
     
     if (!roomNumber || !action) {
@@ -552,7 +819,7 @@ app.post('/api/v1/external/checkin', externalApiLimiter, (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ดึงรายการคำสั่งที่รอ approval
-app.get('/api/admin/approval', (req, res) => {
+app.get('/api/admin/approval', verifyStaffToken, (req, res) => {
     try {
         const pending = gate.listPending();
         res.json({ success: true, pending });
@@ -562,7 +829,7 @@ app.get('/api/admin/approval', (req, res) => {
 });
 
 // ดึงรายละเอียดคำสั่งเฉพาะตัว
-app.get('/api/admin/approval/:id', (req, res) => {
+app.get('/api/admin/approval/:id', verifyStaffToken, (req, res) => {
     const record = gate.get(req.params.id);
     if (!record) {
         return res.status(404).json({ error: 'Approval request not found' });
@@ -571,7 +838,7 @@ app.get('/api/admin/approval/:id', (req, res) => {
 });
 
 // Admin กด Approve
-app.post('/api/admin/approval/:id/approve', async (req, res) => {
+app.post('/api/admin/approval/:id/approve', verifyStaffToken, async (req, res) => {
     const { reason, decidedBy } = req.body;
 
     if (!reason || !String(reason).trim()) {
@@ -581,7 +848,7 @@ app.post('/api/admin/approval/:id/approve', async (req, res) => {
     try {
         const record = gate.approve(req.params.id, {
             reason,
-            decidedBy: decidedBy || `admin:${req.ip}`,
+            decidedBy: decidedBy || `staff:${req.user.role}:${req.ip}`,
             ipAddress: req.ip,
         });
 
@@ -615,7 +882,7 @@ app.post('/api/admin/approval/:id/approve', async (req, res) => {
 });
 
 // Admin กด Reject
-app.post('/api/admin/approval/:id/reject', async (req, res) => {
+app.post('/api/admin/approval/:id/reject', verifyStaffToken, async (req, res) => {
     const { reason, decidedBy } = req.body;
 
     if (!reason || !String(reason).trim()) {
@@ -625,7 +892,7 @@ app.post('/api/admin/approval/:id/reject', async (req, res) => {
     try {
         const record = gate.reject(req.params.id, {
             reason,
-            decidedBy: decidedBy || `admin:${req.ip}`,
+            decidedBy: decidedBy || `staff:${req.user.role}:${req.ip}`,
             ipAddress: req.ip,
         });
 
@@ -653,7 +920,7 @@ app.post('/api/admin/approval/:id/reject', async (req, res) => {
 });
 
 // Execute คำสั่งที่ได้รับอนุมัติแล้ว (ภายใน 60 วินาที)
-app.post('/api/admin/approval/:id/execute', async (req, res) => {
+app.post('/api/admin/approval/:id/execute', verifyStaffToken, async (req, res) => {
     try {
         const record = gate.consumeApproved(req.params.id);
         const command = record.command;
@@ -748,14 +1015,14 @@ app.post('/api/admin/approval/:id/execute', async (req, res) => {
 // API Key Management Routes (/admin/apikeys)
 // ═══════════════════════════════════════════════════════════════════════════
 
-app.get('/api/admin/apikeys', (req, res) => {
+app.get('/api/admin/apikeys', verifyOwnerToken, (req, res) => {
     apiKeyService.listApiKeys((err, keys) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ success: true, keys });
     });
 });
 
-app.post('/api/admin/apikeys', (req, res) => {
+app.post('/api/admin/apikeys', verifyOwnerToken, (req, res) => {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'name is required' });
     
@@ -765,7 +1032,7 @@ app.post('/api/admin/apikeys', (req, res) => {
     });
 });
 
-app.delete('/api/admin/apikeys/:id', (req, res) => {
+app.delete('/api/admin/apikeys/:id', verifyOwnerToken, (req, res) => {
     apiKeyService.revokeApiKey(req.params.id, (err) => {
         if (err) return res.status(500).json({ error: err.message });
         res.json({ success: true, message: 'API Key revoked successfully' });
@@ -775,7 +1042,7 @@ app.delete('/api/admin/apikeys/:id', (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════
 // Wi-Fi Management Routes
 // ═══════════════════════════════════════════════════════════════════════════
-app.get('/api/wifi/status', async (req, res) => {
+app.get('/api/wifi/status', verifyOwnerToken, async (req, res) => {
     try {
         const status = await wifiService.getStatus();
         res.json(status);
@@ -784,7 +1051,7 @@ app.get('/api/wifi/status', async (req, res) => {
     }
 });
 
-app.get('/api/wifi/scan', async (req, res) => {
+app.get('/api/wifi/scan', verifyOwnerToken, async (req, res) => {
     try {
         const result = await wifiService.scanNetworks();
         res.json(result);
@@ -793,7 +1060,7 @@ app.get('/api/wifi/scan', async (req, res) => {
     }
 });
 
-app.post('/api/wifi/connect', async (req, res) => {
+app.post('/api/wifi/connect', verifyOwnerToken, async (req, res) => {
     const { ssid, password } = req.body;
     if (!ssid) {
         return res.status(400).json({ success: false, error: 'SSID is required' });
@@ -806,7 +1073,7 @@ app.post('/api/wifi/connect', async (req, res) => {
     }
 });
 
-app.post('/api/wifi/disconnect', async (req, res) => {
+app.post('/api/wifi/disconnect', verifyOwnerToken, async (req, res) => {
     try {
         const result = await wifiService.disconnect();
         res.json(result);
@@ -815,7 +1082,7 @@ app.post('/api/wifi/disconnect', async (req, res) => {
     }
 });
 
-app.post('/api/wifi/toggle', async (req, res) => {
+app.post('/api/wifi/toggle', verifyOwnerToken, async (req, res) => {
     const { enabled } = req.body;
     if (enabled === undefined) {
         return res.status(400).json({ success: false, error: 'enabled parameter is required' });
@@ -832,7 +1099,7 @@ app.post('/api/wifi/toggle', async (req, res) => {
 // Audit Log Routes
 // ═══════════════════════════════════════════════════════════════════════════
 
-app.get('/api/audit/events', async (req, res) => {
+app.get('/api/audit/events', verifyOwnerToken, async (req, res) => {
     try {
         const events = await listAuditEvents(db.db, {
             traceId: req.query.trace_id,
@@ -846,11 +1113,19 @@ app.get('/api/audit/events', async (req, res) => {
     }
 });
 
+// Clear Audit Logs (Owner only)
+app.delete('/api/audit/events', verifyOwnerToken, (req, res) => {
+    db.db.run("DELETE FROM approval_audit_events", [], function (err) {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, message: 'All audit events cleared successfully', count: this.changes });
+    });
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // System Monitoring & Reporting Routes
 // ═══════════════════════════════════════════════════════════════════════════
 
-app.get('/api/system/report', async (req, res) => {
+app.get('/api/system/report', verifyStaffToken, async (req, res) => {
     try {
         const report = await cronScheduler.generateAndSendReport(db, googleNotifier, pbx);
         res.json({ success: true, report });
@@ -943,6 +1218,276 @@ app.get('/api/docs', (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Diagnostics & Copilot Routes
+// ═══════════════════════════════════════════════════════════════════════════
+const { runDiagnostics } = require('./services/diagnostics');
+
+app.get('/api/diagnostics/health', verifyStaffToken, async (req, res) => {
+    try {
+        const report = await runDiagnostics(db, pbx);
+        res.json({ success: true, report });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// Rate limiting and alert tracking for Copilot
+const copilotRequests = [];
+const RATE_LIMIT_WINDOW = 60000; // 1 minute
+const MAX_REQUESTS_PER_MINUTE = 15; // Max 15 requests/min overall
+let lastTelegramAlertTime = 0;
+const TELEGRAM_ALERT_COOLDOWN = 300000; // 5 minutes cooldown
+
+app.post('/api/diagnostics/copilot', verifyOwnerToken, async (req, res) => {
+    try {
+        const { message, history } = req.body;
+        
+        // Rate limit verification
+        const now = Date.now();
+        while (copilotRequests.length > 0 && copilotRequests[0] < now - RATE_LIMIT_WINDOW) {
+            copilotRequests.shift();
+        }
+        copilotRequests.push(now);
+
+        if (copilotRequests.length > MAX_REQUESTS_PER_MINUTE) {
+            console.warn(`[Copilot] 🚨 Rate limit exceeded: ${copilotRequests.length} req/min`);
+            if (telegramBot && (now - lastTelegramAlertTime > TELEGRAM_ALERT_COOLDOWN)) {
+                lastTelegramAlertTime = now;
+                telegramBot.sendSystemAlert(
+                    '🚨 AI Copilot Rate Spike',
+                    `คำเตือน: ตรวจพบการเรียกใช้งาน AI Copilot ผิดปกติ (${copilotRequests.length} ครั้ง/นาที) ระบบได้ทำการจำกัดการใช้งานชั่วคราวเพื่อป้องกันเครดิตรั่วไหล`
+                );
+            }
+            return res.status(429).json({
+                success: false,
+                error: 'Too many requests. Please try again shortly.'
+            });
+        }
+
+        const report = await runDiagnostics(db, pbx);
+        
+        // Read troubleshooting guide
+        let troubleshootingGuide = '';
+        try {
+            const guidePath = path.join(__dirname, '..', 'docs', 'wiki', 'troubleshooting.md');
+            if (fs.existsSync(guidePath)) {
+                troubleshootingGuide = fs.readFileSync(guidePath, 'utf8');
+            }
+        } catch (e) {
+            console.error('Failed to read troubleshooting guide:', e.message);
+        }
+
+        const apiKey = process.env.GEMINI_API_KEY;
+        const openrouterKey = process.env.OPENROUTER_API_KEY;
+
+        const buildFallbackReply = (reason) => {
+            let fallbackReply = `⚠️ **Offline Fallback Enabled**\n*(Reason: ${reason})*\n\n`;
+            fallbackReply += 'System Diagnostics Scan Summary:\n';
+            
+            let issuesFound = 0;
+            if (report.pbx.status === 'red') {
+                issuesFound++;
+                fallbackReply += `🔴 **PBX Connection Error**: ${report.pbx.details}\n👉 *Action*: Check PBX power, and verify the LAN cable on the PBX and Pi is secure.\n\n`;
+            }
+            if (report.network.status === 'red') {
+                issuesFound++;
+                fallbackReply += `🔴 **Network/Internet Error**: ${report.network.details}\n👉 *Action*: Check internet gateway router and Ethernet connection.\n\n`;
+            }
+            if (report.database.status === 'red') {
+                issuesFound++;
+                fallbackReply += `🔴 **SQLite Database Error**: ${report.database.details}\n👉 *Action*: Verify read/write permissions at \`/opt/hotel-ecs/data/hotel.db\`\n\n`;
+            }
+
+            if (issuesFound === 0) {
+                fallbackReply += '🟢 **All core services are running healthy!** No critical issues detected.\n';
+            }
+
+            fallbackReply += '\n⚙️ *Troubleshooting Commands:*\n';
+            fallbackReply += '* Check PBX port 23:\n```bash\ntelnet 192.168.1.91 23\n```\n';
+            fallbackReply += '* Check Docker status:\n```bash\ndocker ps\n```\n';
+            fallbackReply += '* Restart Backend API:\n```bash\ndocker restart hotel-app\n```\n';
+            fallbackReply += '\n💡 *Note: To activate full AI Copilot chat, add a valid `GEMINI_API_KEY` or `OPENROUTER_API_KEY` inside `/opt/hotel-ecs/config/.env`.*';
+            return fallbackReply;
+        };
+
+        if (!apiKey && !openrouterKey) {
+            return res.json({ success: true, reply: buildFallbackReply('Missing API Key config') });
+        }
+
+        // Call Gemini API using native fetch
+        const systemPrompt = `You are ECS-Copilot, an expert IoT and systems troubleshooting assistant for the Smart Hotel ECS system.
+We are running on a Raspberry Pi 4 connecting to a Phonik PBX and ECS-103R relays.
+Here is the current real-time diagnostic report of the system:
+${JSON.stringify(report, null, 2)}
+
+Use this context to solve the user's issue. Also, here is the troubleshooting guide:
+${troubleshootingGuide}
+
+Additionally, you can control the hotel hardware (relays) on behalf of the user when they express a clear intent to turn ON or OFF lights/power for a specific room.
+If you detect an intent to control room power (e.g., "เปิดไฟห้อง 101", "ปิดไฟ 102", "ช่วยเช็คเอาท์ห้อง 103"):
+You MUST output a JSON block at the very end of your response inside a markdown code block tagged with 'control-command', like this:
+\`\`\`control-command
+{"controlRequest": true, "action": "ON" | "OFF", "room": "101"}
+\`\`\`
+Choose "ON" for turning on power / check-in, and "OFF" for turning off power / check-out. Ensure the JSON is valid.
+
+Be concise. Answer in Thai. Provide direct command line suggestions with copyable code blocks when appropriate (e.g. using SSH commands, restarting Docker containers, or editing config files). Keep responses under 400 words.`;
+
+        const messages = [];
+        if (history && Array.isArray(history)) {
+            history.forEach(h => {
+                messages.push({
+                    role: h.role === 'user' ? 'user' : 'model',
+                    parts: [{ text: h.content }]
+                });
+            });
+        }
+        messages.push({
+            role: 'user',
+            parts: [{ text: `System context: ${systemPrompt}\n\nUser Question: ${message}` }]
+        });
+
+        let reply = '';
+        let apiSuccess = false;
+
+        // 1. Try OpenRouter if key is present
+        if (openrouterKey && !apiSuccess) {
+            try {
+                const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+                const openRouterMessages = [
+                    { role: 'system', content: systemPrompt }
+                ];
+                if (history && Array.isArray(history)) {
+                    history.forEach(h => {
+                        openRouterMessages.push({
+                            role: h.role === 'user' ? 'user' : 'assistant',
+                            content: h.content
+                        });
+                    });
+                }
+                openRouterMessages.push({
+                    role: 'user',
+                    content: message
+                });
+
+                const response = await fetch(openRouterUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${openrouterKey}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'google/gemini-2.5-flash',
+                        messages: openRouterMessages,
+                        max_tokens: 2000
+                    })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    let errObj = {};
+                    try { errObj = JSON.parse(errText); } catch(e){}
+                    const errMsg = errObj.error?.message || errText;
+                    throw new Error(`OpenRouter error: ${errMsg}`);
+                }
+
+                const data = await response.json();
+                reply = data.choices?.[0]?.message?.content || 'No response from OpenRouter';
+                apiSuccess = true;
+            } catch (openRouterErr) {
+                console.error('OpenRouter call failed:', openRouterErr.message);
+                if (!apiKey) {
+                    return res.json({ success: true, reply: buildFallbackReply(`OpenRouter error: ${openRouterErr.message}`) });
+                }
+            }
+        }
+
+        // 2. Fallback to native Gemini API if key is present
+        if (apiKey && !apiSuccess) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: messages })
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    let errObj = {};
+                    try { errObj = JSON.parse(errText); } catch(e){}
+                    const errMsg = errObj.error?.message || errText;
+                    throw new Error(errMsg);
+                }
+
+                const data = await response.json();
+                reply = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response from AI';
+                apiSuccess = true;
+            } catch (apiErr) {
+                console.error('Gemini API call failed:', apiErr.message);
+                return res.json({ success: true, reply: buildFallbackReply(`Gemini API error: ${apiErr.message}`) });
+            }
+        }
+
+        // ─── AI Control Execution Loop ───────────────────────────────────────
+        const controlRegex = /```control-command\s*([\s\S]*?)\s*```/;
+        const match = reply.match(controlRegex);
+        
+        if (match) {
+            try {
+                const cmdJson = JSON.parse(match[1].trim());
+                if (cmdJson.controlRequest && cmdJson.action && cmdJson.room) {
+                    const roomNumber = cmdJson.room;
+                    const action = cmdJson.action.toUpperCase();
+                    const commandType = action === 'ON' ? 'ROOM_ON' : 'ROOM_OFF';
+                    
+                    console.log(`[AI Control] Copilot detected intent: Room ${roomNumber} -> ${action}`);
+                    
+                    const aiCommand = buildCommand(commandType, roomNumber, {
+                        source: 'copilot_chat',
+                        flow: 'ai_control',
+                        requestedBy: `ai_copilot:owner`
+                    });
+                    
+                    // Run command through safety gate
+                    const safetyResult = await executeWithSafety(aiCommand, async () => {
+                        if (commandType === 'ROOM_ON') {
+                            return await pbx.checkIn(roomNumber, 'AI Force ON');
+                        } else {
+                            return await pbx.checkOut(roomNumber);
+                        }
+                    });
+                    
+                    if (safetyResult.blocked) {
+                        reply = reply.replace(controlRegex, `\n\n*(⚠️ การสั่งการฮาร์ดแวร์ถูกระงับ: ${safetyResult.reason})*`);
+                    } else {
+                        // Update DB State
+                        const dbStatus = commandType === 'ROOM_ON' ? 'occupied' : 'vacant';
+                        const isOccupied = commandType === 'ROOM_ON';
+                        
+                        await new Promise((resolve) => {
+                            db.updateRoomState(roomNumber, dbStatus, isOccupied, (err) => {
+                                if (err) console.error(`[AI Control] DB update failed:`, err.message);
+                                resolve();
+                            });
+                        });
+                        
+                        reply = reply.replace(controlRegex, `\n\n*(⚡ ระบบควบคุม AI สั่งการสำเร็จ: สั่ง ${action} ระบบไฟห้อง ${roomNumber} เรียบร้อยแล้วครับ 🟢)*`);
+                    }
+                }
+            } catch (err) {
+                console.error('[AI Control] Failed to parse control command JSON:', err.message);
+                reply = reply.replace(controlRegex, '\n\n*(❌ เกิดข้อผิดพลาดในการอ่านคำสั่งควบคุม)*');
+            }
+        }
+
+        return res.json({ success: true, reply });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 // Serve Frontend Static Files
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
@@ -958,8 +1503,15 @@ async function startServer() {
         console.log(`[PBX] ✅ Connected in ${PBX_MODE} mode`);
         // Trigger initial sync upon cold boot
         syncPbxStateWithDatabase();
+
+        // Setup periodic Digital Twin sync loop (every 5 minutes)
+        setInterval(() => {
+            console.log(`[SYNC] 🔄 Running scheduled Digital Twin Synchronization...`);
+            syncPbxStateWithDatabase();
+        }, 5 * 60 * 1000);
     } catch (err) {
-        console.warn(`[PBX] ⚠️ PBX connection failed: ${err.message} — server will start anyway`);
+        console.warn(`[PBX] ⚠️ PBX connection failed at startup: ${err.message} — server will start anyway`);
+        scheduleReconnection();
     }
 
     // Initialize daily reporting cronjob

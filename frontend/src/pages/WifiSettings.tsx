@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { 
   Wifi, 
   WifiOff, 
@@ -32,6 +33,17 @@ interface WifiNetwork {
 }
 
 const WifiSettings = () => {
+  const navigate = useNavigate();
+  
+  // Role verification (Redirect if not owner)
+  useEffect(() => {
+    const role = localStorage.getItem('pms_role');
+    const token = localStorage.getItem('pms_token');
+    if (!token || role !== 'owner') {
+      navigate('/dashboard');
+    }
+  }, [navigate]);
+
   const [status, setStatus] = useState<WifiStatus>({
     success: true,
     enabled: true,
@@ -57,9 +69,24 @@ const WifiSettings = () => {
   // Alert banner
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
 
+  // Helper for Authenticated Fetch
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('pms_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    return fetch(url, { ...options, headers });
+  };
+
   const fetchStatus = async () => {
     try {
-      const res = await fetch('/api/wifi/status');
+      const res = await fetchWithAuth('/api/wifi/status');
+      if (res.status === 401 || res.status === 403) {
+        navigate('/dashboard');
+        return;
+      }
       const data = await res.json();
       setStatus(data);
     } catch (err) {
@@ -73,7 +100,8 @@ const WifiSettings = () => {
   const scanNetworks = async (silent = false) => {
     if (!silent) setIsScanning(true);
     try {
-      const res = await fetch('/api/wifi/scan');
+      const res = await fetchWithAuth('/api/wifi/scan');
+      if (res.status === 401 || res.status === 403) return;
       const data = await res.json();
       if (data.success) {
         setNetworks(data.networks || []);
@@ -89,10 +117,12 @@ const WifiSettings = () => {
   };
 
   useEffect(() => {
-    fetchStatus();
-    // Scan networks on page load if wifi is enabled
-    if (status.enabled) {
-      scanNetworks(true);
+    const role = localStorage.getItem('pms_role');
+    if (role === 'owner') {
+      fetchStatus();
+      if (status.enabled) {
+        scanNetworks(true);
+      }
     }
   }, []);
 
@@ -114,9 +144,8 @@ const WifiSettings = () => {
     setIsToggling(true);
     const targetState = !status.enabled;
     try {
-      const res = await fetch('/api/wifi/toggle', {
+      const res = await fetchWithAuth('/api/wifi/toggle', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled: targetState })
       });
       const data = await res.json();
@@ -142,7 +171,7 @@ const WifiSettings = () => {
     if (window.confirm('คุณต้องการยกเลิกการเชื่อมต่อ Wi-Fi นี้ใช่หรือไม่?')) {
       setIsDisconnecting(true);
       try {
-        const res = await fetch('/api/wifi/disconnect', { method: 'POST' });
+        const res = await fetchWithAuth('/api/wifi/disconnect', { method: 'POST' });
         const data = await res.json();
         if (data.success) {
           showAlert('success', 'ยกเลิกการเชื่อมต่อสำเร็จ');
@@ -163,9 +192,8 @@ const WifiSettings = () => {
     if (!selectedNetwork) return;
     setIsConnecting(true);
     try {
-      const res = await fetch('/api/wifi/connect', {
+      const res = await fetchWithAuth('/api/wifi/connect', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ssid: selectedNetwork.ssid,
           password: password || undefined

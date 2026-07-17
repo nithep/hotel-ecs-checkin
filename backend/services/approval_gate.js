@@ -77,6 +77,7 @@ const APPROVED_FLOW_SOURCES = new Set([
   'booking_flow',
   'sync_recovery',
   'system_sync',
+  'guest_portal',
 ]);
 
 function parseClockMinutes(value, fallback) {

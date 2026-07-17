@@ -89,7 +89,14 @@ const Dashboard = () => {
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'rooms' | 'approvals' | 'audit' | 'developer'>('rooms');
+  const [pbxInfo, setPbxInfo] = useState<{ mode: string; isReady: boolean; details: string } | null>(null);
   
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('pms_token'));
+  const [pin, setPin] = useState('');
+  const [pinError, setPinError] = useState('');
+  const [role, setRole] = useState(localStorage.getItem('pms_role') || '');
+
   // Modal State for Approval Reason
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [selectedApprovalId, setSelectedApprovalId] = useState<string | null>(null);
@@ -98,9 +105,98 @@ const Dashboard = () => {
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
 
+  // Helper function for Authenticated fetch calls
+  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
+    const token = localStorage.getItem('pms_token');
+    const headers = {
+      'Content-Type': 'application/json',
+      ...options.headers,
+      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+    };
+    return fetch(url, { ...options, headers });
+  };
+
+  const handleKeypadPress = (val: string) => {
+    if (pin.length >= 4) return;
+    setPinError('');
+    const newPin = pin + val;
+    setPin(newPin);
+    if (newPin.length === 4) {
+      verifyPin(newPin);
+    }
+  };
+
+  const handleKeypadClear = () => {
+    setPin('');
+    setPinError('');
+  };
+
+  const handleKeypadBackspace = () => {
+    setPin(pin.slice(0, -1));
+    setPinError('');
+  };
+
+  const verifyPin = async (enteredPin: string) => {
+    try {
+      const response = await fetch('/api/auth/verify-pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: enteredPin })
+      });
+      const data = await response.json();
+      if (response.ok) {
+        localStorage.setItem('pms_token', data.token);
+        localStorage.setItem('pms_role', data.role);
+        setRole(data.role);
+        setIsAuthenticated(true);
+        setPin('');
+        if (data.role === 'front_desk') {
+          setActiveTab('rooms');
+        }
+      } else {
+        setPinError(data.error || 'รหัส PIN ไม่ถูกต้อง');
+        setPin('');
+      }
+    } catch (e) {
+      setPinError('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์');
+      setPin('');
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem('pms_token');
+    localStorage.removeItem('pms_role');
+    setIsAuthenticated(false);
+    setRole('');
+  };
+
+  const fetchDiagnostics = async () => {
+    try {
+      const res = await fetchWithAuth('/api/diagnostics/health');
+      if (res.status === 401 || res.status === 403) {
+        handleLogout();
+        return;
+      }
+      const data = await res.json();
+      if (data.success && data.report?.pbx) {
+        setPbxInfo({
+          mode: data.report.pbx.mode,
+          isReady: data.report.pbx.isReady,
+          details: data.report.pbx.details
+        });
+      }
+    } catch (error) {
+      console.error("Failed to fetch diagnostics", error);
+    }
+  };
+
   const fetchRooms = async () => {
     try {
-      const res = await fetch('/api/rooms');
+      const res = await fetchWithAuth('/api/rooms');
+      if (res.status === 401 || res.status === 403) {
+        handleLogout();
+        return;
+      }
       const data = await res.json();
       if (data.success) {
         setRooms(data.rooms);
@@ -112,7 +208,8 @@ const Dashboard = () => {
 
   const fetchPendingApprovals = async () => {
     try {
-      const res = await fetch('/api/admin/approval');
+      const res = await fetchWithAuth('/api/admin/approval');
+      if (res.status === 401 || res.status === 403) return;
       const data = await res.json();
       if (data.success) {
         setPendingApprovals(data.pending);
@@ -123,8 +220,10 @@ const Dashboard = () => {
   };
 
   const fetchAuditLogs = async () => {
+    if (role !== 'owner') return;
     try {
-      const res = await fetch('/api/audit/events?limit=25');
+      const res = await fetchWithAuth('/api/audit/events?limit=25');
+      if (res.status === 401 || res.status === 403) return;
       const data = await res.json();
       if (data.success) {
         setAuditLogs(data.events);
@@ -135,8 +234,10 @@ const Dashboard = () => {
   };
 
   const fetchApiKeys = async () => {
+    if (role !== 'owner') return;
     try {
-      const res = await fetch('/api/admin/apikeys');
+      const res = await fetchWithAuth('/api/admin/apikeys');
+      if (res.status === 401 || res.status === 403) return;
       const data = await res.json();
       if (data.success) {
         setApiKeys(data.keys);
@@ -147,21 +248,28 @@ const Dashboard = () => {
   };
 
   const loadAllData = async () => {
-    await Promise.all([fetchRooms(), fetchPendingApprovals(), fetchAuditLogs(), fetchApiKeys()]);
+    if (!isAuthenticated) return;
+    const promises = [fetchRooms(), fetchPendingApprovals(), fetchDiagnostics()];
+    if (role === 'owner') {
+      promises.push(fetchAuditLogs());
+      promises.push(fetchApiKeys());
+    }
+    await Promise.all(promises);
     setIsLoading(false);
   };
 
   useEffect(() => {
+    if (!isAuthenticated) return;
     loadAllData();
-    // Poll updates every 4 seconds
     const interval = setInterval(() => {
       fetchRooms();
       fetchPendingApprovals();
-      if (activeTab === 'audit') fetchAuditLogs();
-      if (activeTab === 'developer') fetchApiKeys();
+      fetchDiagnostics();
+      if (activeTab === 'audit' && role === 'owner') fetchAuditLogs();
+      if (activeTab === 'developer' && role === 'owner') fetchApiKeys();
     }, 4000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, [activeTab, isAuthenticated, role]);
 
   const showAlert = (type: 'success' | 'error' | 'warning', text: string) => {
     setAlertMessage({ type, text });
@@ -170,9 +278,8 @@ const Dashboard = () => {
 
   const handleCheckout = async (roomId: number) => {
     try {
-      const response = await fetch('/api/checkout', {
+      const response = await fetchWithAuth('/api/checkout', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ roomNumber: roomId })
       });
       const data = await response.json();
@@ -183,7 +290,7 @@ const Dashboard = () => {
       } else if (response.ok) {
         showAlert('success', `✅ เช็คเอาท์ห้อง ${roomId} สำเร็จ`);
         fetchRooms();
-        fetchAuditLogs();
+        if (role === 'owner') fetchAuditLogs();
       } else {
         showAlert('error', `❌ เกิดข้อผิดพลาด: ${data.error || 'ไม่สามารถทำรายการได้'}`);
       }
@@ -206,12 +313,11 @@ const Dashboard = () => {
 
     try {
       const endpoint = `/api/admin/approval/${selectedApprovalId}/${modalAction}`;
-      const response = await fetch(endpoint, {
+      const response = await fetchWithAuth(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           reason: actionReason,
-          decidedBy: 'admin:web_dashboard'
+          decidedBy: `staff:${role}`
         })
       });
       const data = await response.json();
@@ -220,9 +326,8 @@ const Dashboard = () => {
         throw new Error(data.error || 'Failed to process decision');
       }
 
-      // If approved, trigger execute immediately for client convenience
       if (modalAction === 'approve') {
-        const execResponse = await fetch(`/api/admin/approval/${selectedApprovalId}/execute`, {
+        const execResponse = await fetchWithAuth(`/api/admin/approval/${selectedApprovalId}/execute`, {
           method: 'POST',
         });
         const execData = await execResponse.json();
@@ -244,13 +349,13 @@ const Dashboard = () => {
   };
 
   const handleCreateApiKey = async () => {
+    if (role !== 'owner') return;
     const name = prompt("ชื่อระบบ PMS ที่ต้องการออก API Key (เช่น Cloudbeds, Fidelio):");
     if (!name) return;
     
     try {
-      const response = await fetch('/api/admin/apikeys', {
+      const response = await fetchWithAuth('/api/admin/apikeys', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name })
       });
       const data = await response.json();
@@ -266,16 +371,35 @@ const Dashboard = () => {
   };
 
   const handleRevokeApiKey = async (id: number) => {
+    if (role !== 'owner') return;
     if (!confirm("คุณแน่ใจหรือไม่ที่จะเพิกถอน API Key นี้? PMS จะไม่สามารถสั่งการได้อีกต่อไป")) return;
     
     try {
-      const response = await fetch(`/api/admin/apikeys/${id}`, { method: 'DELETE' });
+      const response = await fetchWithAuth(`/api/admin/apikeys/${id}`, { method: 'DELETE' });
       if (response.ok) {
         showAlert('success', '✅ เพิกถอน API Key แล้ว');
         fetchApiKeys();
       }
     } catch (error) {
       showAlert('error', '❌ ล้มเหลว');
+    }
+  };
+
+  const handleClearAuditLogs = async () => {
+    if (role !== 'owner') return;
+    if (!confirm("⚠️ คุณแน่ใจหรือไม่ที่จะลบประวัติการเช็คอินทั้งหมด? การกระทำนี้ไม่สามารถย้อนคืนได้ (PDPA Purge)")) return;
+
+    try {
+      const response = await fetchWithAuth('/api/audit/events', { method: 'DELETE' });
+      if (response.ok) {
+        showAlert('success', '🗑️ ล้างประวัติ Audit Logs ทั้งหมดสำเร็จ');
+        fetchAuditLogs();
+      } else {
+        const data = await response.json();
+        showAlert('error', `❌ ${data.error || 'ล้มเหลว'}`);
+      }
+    } catch (error) {
+      showAlert('error', '❌ ไม่สามารถติดต่อเซิร์ฟเวอร์เพื่อล้างข้อมูลได้');
     }
   };
 
@@ -286,6 +410,78 @@ const Dashboard = () => {
     powerOn: rooms.filter((r) => r.power).length,
     pending: pendingApprovals.length,
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div className="flex items-center justify-center min-h-[50vh] sm:min-h-[65vh] pb-6 sm:pb-12 px-2 sm:px-0">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-panel w-full max-w-md p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden space-y-4 sm:space-y-6 bg-slate-900/60 backdrop-blur-xl"
+        >
+          <div className="absolute -top-12 -right-12 w-32 h-32 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+          <div className="text-center space-y-2">
+            <div className="inline-flex p-2.5 bg-sky-500/10 text-sky-400 rounded-xl mb-1 border border-sky-500/20">
+              <Lock size={28} />
+            </div>
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-100">ความปลอดภัยระบบควบคุม</h2>
+            <p className="text-xs sm:text-sm text-slate-400">กรุณาป้อนรหัส PIN 4 หลัก เพื่อปลดล็อกแผงควบคุมระบบ</p>
+          </div>
+
+          <div className="space-y-3 sm:space-y-4">
+            <div className="flex justify-center gap-3 sm:gap-4 py-1 sm:py-2">
+              {[0, 1, 2, 3].map((idx) => (
+                <div 
+                  key={idx} 
+                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border transition-all duration-150 ${
+                    pin.length > idx 
+                      ? 'bg-sky-400 border-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)] scale-110' 
+                      : 'border-slate-700 bg-slate-950'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {pinError && (
+              <p className="text-xs text-rose-400 text-center font-semibold animate-pulse">{pinError}</p>
+            )}
+
+            <div className="grid grid-cols-3 gap-2.5 max-w-[220px] sm:max-w-[240px] mx-auto pt-1 sm:pt-2">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => handleKeypadPress(String(num))}
+                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-base sm:text-lg font-bold text-slate-200 transition-all active:scale-90 hover:border-slate-700 flex items-center justify-center"
+                >
+                  {num}
+                </button>
+              ))}
+              <button
+                onClick={handleKeypadClear}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 text-[10px] sm:text-xs font-bold text-rose-400 transition-all active:scale-90 flex items-center justify-center"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => handleKeypadPress('0')}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-base sm:text-lg font-bold text-slate-200 transition-all active:scale-90 flex items-center justify-center"
+              >
+                0
+              </button>
+              <button
+                onClick={handleKeypadBackspace}
+                className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-slate-950/40 hover:bg-slate-900/50 border border-slate-800/40 text-xs sm:text-sm font-bold text-slate-400 transition-all active:scale-90 flex items-center justify-center"
+              >
+                ⌫
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -326,12 +522,24 @@ const Dashboard = () => {
           </h1>
           <p className="text-slate-400 mt-2 flex items-center gap-2 font-medium">
             <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-hotel-accent opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-hotel-accent shadow-[0_0_10px_rgba(56,189,248,0.8)]"></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 \${pbxInfo?.isReady || pbxInfo?.mode === 'mock' ? 'bg-hotel-accent' : 'bg-rose-500'}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 shadow-[0_0_10px_rgba(56,189,248,0.8)] \${pbxInfo?.isReady || pbxInfo?.mode === 'mock' ? 'bg-hotel-accent' : 'bg-rose-500'}`}></span>
             </span>
-            เชื่อมต่อตู้สาขา Phonik PBX สำเร็จ (โหมด Live/Simulator)
+            {pbxInfo ? (
+              pbxInfo.mode === 'tcp' ? (
+                pbxInfo.isReady ? (
+                  `เชื่อมต่อตู้สาขา Phonik PBX จริงสำเร็จ (โหมด TCP: ${pbxInfo.details.match(/\d+\.\d+\.\d+\.\d+:\d+/)?.[0] || '192.168.1.91'})`
+                ) : (
+                  `กำลังเชื่อมต่อตู้สาขา Phonik PBX... (โหมด TCP / เชื่อมต่อขัดข้อง)`
+                )
+              ) : (
+                `เชื่อมต่อระบบจำลองตู้สาขาสำเร็จ (โหมด Simulator)`
+              )
+            ) : (
+              `กำลังตรวจสอบการเชื่อมต่อตู้สาขา Phonik PBX...`
+            )}
           </p>
-          <div className="mt-5">
+          <div className="mt-5 flex gap-2">
             <a
               href="https://meet.google.com/new"
               target="_blank"
@@ -341,6 +549,13 @@ const Dashboard = () => {
               <Video size={18} />
               เปิด Virtual Kiosk (รอรับสายแขก)
             </a>
+            <button
+              onClick={handleLogout}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-950/30 hover:bg-rose-950/50 border border-rose-900/30 text-rose-400 rounded-xl text-sm font-semibold transition-all active:scale-95 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)]"
+            >
+              <LogOut size={18} />
+              ล็อกคอนโซล (Logout)
+            </button>
           </div>
         </div>
 
@@ -373,28 +588,32 @@ const Dashboard = () => {
               </span>
             )}
           </button>
-          <button
-            onClick={() => setActiveTab('audit')}
-            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
-              activeTab === 'audit' 
-                ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <FileText size={18} />
-            ประวัติ (Audit Log)
-          </button>
-          <button
-            onClick={() => setActiveTab('developer')}
-            className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
-              activeTab === 'developer' 
-                ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            <Code size={18} />
-            Open API
-          </button>
+          {role === 'owner' && (
+            <button
+              onClick={() => setActiveTab('audit')}
+              className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
+                activeTab === 'audit' 
+                  ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <FileText size={18} />
+              ประวัติ (Audit Log)
+            </button>
+          )}
+          {role === 'owner' && (
+            <button
+              onClick={() => setActiveTab('developer')}
+              className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
+                activeTab === 'developer' 
+                  ? 'bg-hotel-card text-hotel-accent shadow-[0_0_15px_rgba(56,189,248,0.2)] border border-hotel-accent/30' 
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <Code size={18} />
+              Open API
+            </button>
+          )}
         </div>
       </div>
 
@@ -582,54 +801,71 @@ const Dashboard = () => {
 
           {/* TAB 3: AUDIT LOG */}
           {activeTab === 'audit' && (
-            <motion.div
-              key="audit"
-              initial={{ opacity: 0, y: 15 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -15 }}
-              className="bg-hotel-card border border-slate-900 rounded-2xl overflow-hidden"
-            >
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="border-b border-slate-900 bg-slate-950 text-slate-400 text-xs font-bold uppercase tracking-wider">
-                      <th className="p-4">เวลา</th>
-                      <th className="p-4">เหตุการณ์</th>
-                      <th className="p-4">คำสั่ง</th>
-                      <th className="p-4">ห้อง</th>
-                      <th className="p-4">แอดมิน / ผู้อนุมัติ</th>
-                      <th className="p-4">เหตุผล</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-900/60 text-sm text-slate-300">
-                    {auditLogs.map((log) => (
-                      <tr key={log.event_id} className="hover:bg-slate-950/30 transition-colors">
-                        <td className="p-4 whitespace-nowrap text-slate-500 text-xs">
-                          {new Date(log.timestamp).toLocaleString('th-TH')}
-                        </td>
-                        <td className="p-4">
-                          <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
-                            log.event_type === 'APPROVED' 
-                              ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
-                              : log.event_type === 'REJECTED'
-                              ? 'bg-rose-950 text-rose-400 border border-rose-800'
-                              : log.event_type === 'AUTO_PASSED'
-                              ? 'bg-slate-900 text-slate-400 border border-slate-800'
-                              : 'bg-amber-950 text-amber-400 border border-amber-800'
-                          }`}>
-                            {log.event_type}
-                          </span>
-                        </td>
-                        <td className="p-4 font-semibold text-slate-200">{log.command_type}</td>
-                        <td className="p-4 text-hotel-accent font-mono">{log.target_rooms || '-'}</td>
-                        <td className="p-4 text-xs">{log.decided_by || log.requested_by || 'system'}</td>
-                        <td className="p-4 text-slate-400 text-xs max-w-xs truncate">{log.reason || '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center bg-hotel-card border border-slate-900 rounded-2xl p-6 shadow-lg">
+                <div>
+                  <h3 className="text-xl font-bold text-slate-100 flex items-center gap-2">
+                    <FileText className="text-hotel-accent" /> บันทึกประวัติระบบ (Audit Logs)
+                  </h3>
+                  <p className="text-sm text-slate-400 mt-1">ประวัติการสั่งงาน ตรวจสอบ และการอนุมัติคำสั่งควบคุมไฟฟ้าจริงย้อนหลังทั้งหมด</p>
+                </div>
+                <button
+                  onClick={handleClearAuditLogs}
+                  className="bg-rose-950/40 hover:bg-rose-950/60 border border-rose-900/40 text-rose-400 px-5 py-2.5 rounded-xl font-bold transition-all shadow-lg shadow-rose-950/20 whitespace-nowrap hover:bg-rose-950/60 hover:border-rose-800"
+                >
+                  🗑️ ล้างประวัติทั้งหมด
+                </button>
               </div>
-            </motion.div>
+
+              <motion.div
+                key="audit"
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -15 }}
+                className="bg-hotel-card border border-slate-900 rounded-2xl overflow-hidden"
+              >
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-900 bg-slate-950 text-slate-400 text-xs font-bold uppercase tracking-wider">
+                        <th className="p-4">เวลา</th>
+                        <th className="p-4">เหตุการณ์</th>
+                        <th className="p-4">คำสั่ง</th>
+                        <th className="p-4">ห้อง</th>
+                        <th className="p-4">แอดมิน / ผู้อนุมัติ</th>
+                        <th className="p-4">เหตุผล</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-900/60 text-sm text-slate-300">
+                      {auditLogs.map((log) => (
+                        <tr key={log.event_id} className="hover:bg-slate-950/30 transition-colors">
+                          <td className="p-4 whitespace-nowrap text-slate-500 text-xs">
+                            {new Date(log.timestamp).toLocaleString('th-TH')}
+                          </td>
+                          <td className="p-4">
+                            <span className={`text-[10px] px-2 py-0.5 rounded-md font-bold uppercase tracking-wider ${
+                              log.event_type === 'APPROVED' 
+                                ? 'bg-emerald-950 text-emerald-400 border border-emerald-800'
+                                : log.event_type === 'REJECTED'
+                                ? 'bg-rose-950 text-rose-400 border border-rose-800'
+                                : log.event_type === 'AUTO_PASSED'
+                                ? 'bg-slate-900 text-slate-400 border border-slate-800'
+                                : 'bg-amber-950 text-amber-400 border border-amber-800'
+                            }`}>
+                              {log.event_type}
+                            </span>
+                          </td>
+                          <td className="p-4 font-semibold text-slate-200">{log.command_type}</td>
+                          <td className="p-4 text-hotel-accent font-mono">{log.target_rooms || '-'}</td>
+                          <td className="p-4 text-xs">{log.decided_by || log.requested_by || 'system'}</td>
+                          <td className="p-4 text-slate-400 text-xs max-w-xs truncate">{log.reason || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </motion.div>
+            </div>
           )}
 
           {/* TAB 4: DEVELOPER / OPEN API */}

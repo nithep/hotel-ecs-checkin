@@ -6,6 +6,8 @@ import Presentation from './pages/Presentation';
 import Manual from './pages/Manual';
 import GuestView from './pages/GuestView';
 import WifiSettings from './pages/WifiSettings';
+import QRCodeGenerator from './pages/QRCodeGenerator';
+import Copilot from './pages/Copilot';
 
 function App() {
   return (
@@ -16,8 +18,10 @@ function App() {
           <Route index element={<Presentation />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="scan" element={<Scan />} />
+          <Route path="qr-generator" element={<QRCodeGenerator />} />
           <Route path="manual" element={<Manual />} />
           <Route path="wifi" element={<WifiSettings />} />
+          <Route path="copilot" element={<Copilot />} />
         </Route>
       </Routes>
     </BrowserRouter>

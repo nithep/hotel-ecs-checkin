@@ -132,3 +132,48 @@ sudo raspi-config nonint do_overlayfs 0
    ยิง API เช็คอินห้องพักและเช็คเอาท์เพื่อส่งสัญญาณ ON/OFF ระบบไฟ แล้วตรวจดูการสะท้อนข้อมูลกลับบนฐานข้อมูล SQLite ใน Host OS `/opt/hotel-ecs/data/hotel.db`
 4. **ทดสอบระบบความปลอดภัยหลังไฟดับ**:
    ทดสอบถอดปลั๊ก Raspberry Pi 4 ออกโดยไม่มีการ Shutdown แล้วเสียบกลับเข้าไปใหม่ ตรวจสอบว่าระบบบูตขึ้นมาทำงานอัตโนมัติ และข้อมูลสถานะเช็คอินเดิมของห้องพักไม่สูญหายหรือเสียหาย
+
+---
+
+## 🌐 มาตรฐานการตั้งค่า Cloudflare Tunnel (SOP — ต้องทำทุกครั้งที่ Deploy)
+
+> [!IMPORTANT]
+> **กฎเหล็ก:** ห้ามใช้ IP Address ของเครื่อง Pi (เช่น `192.168.1.94:3000`) เป็นเป้าหมายของ Cloudflare Tunnel โดยเด็ดขาด เพราะ IP อาจเปลี่ยนได้ตลอดเมื่อ DHCP ของ Router แจก IP ใหม่ ให้ใช้ **ชื่อ Docker Container เสมอ**
+
+### วิธีตั้งค่า Public Hostname ที่ถูกต้อง
+
+1. ล็อกอินเข้า [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com)
+2. ไปที่ **Networks → Tunnels** → คลิก `hotel-ecs` → **Configure**
+3. ไปที่แท็บ **Public Hostname** → กด **Edit** ที่แถว `hotel.nithep.com`
+4. ตั้งค่าให้ถูกต้องดังนี้:
+
+   | ฟิลด์ | ค่าที่ถูกต้อง | ค่าที่ผิด (ห้ามใช้) |
+   |-------|---------------|---------------------|
+   | Type  | `HTTP`        | -                   |
+   | URL   | `hotel-app:3000` | `192.168.1.xxx:3000` หรือ `localhost:3000` |
+
+5. กด **Save hostname**
+
+### สาเหตุที่ต้องใช้ชื่อ Container Name แทน IP
+- Container `hotel-tunnel` และ `hotel-app` อยู่ใน **Docker Network วงเดียวกัน** (`hotel-ecs_default`)
+- Docker มีระบบ **Internal DNS** ที่แปลงชื่อ Container → IP ภายใน Docker Network อัตโนมัติ
+- การใช้ชื่อ Container จึงทำงานได้ถูกต้องโดยไม่ขึ้นกับ IP ของ Pi เลยแม้แต่น้อย
+
+### คำสั่งให้ Cloudflare AI ดำเนินการ (ใช้ก๊อบวาง)
+หากต้องการให้ Cloudflare Ask AI แก้ไขโดยอัตโนมัติ ให้ก๊อบวางข้อความนี้ลงในกล่องแชทของ Cloudflare AI:
+
+```
+Change the tunnel ingress rule for tunnel "hotel-ecs".
+For the public hostname "hotel.nithep.com", update the service URL to:
+http://hotel-app:3000
+
+This uses the Docker container name for permanent connectivity regardless of the Pi's IP address.
+```
+
+### การตรวจสอบ (Verification)
+หลังจากบันทึกค่าแล้ว ให้ทดสอบด้วยคำสั่งนี้บน Windows PowerShell:
+```powershell
+Invoke-WebRequest -Uri "https://hotel.nithep.com/" -Method Head -UseBasicParsing
+# ต้องได้ StatusCode : 200
+```
+

@@ -15,9 +15,11 @@ services:
       - /opt/hotel-ecs/data/hotel.db:/app/backend/hotel.db
       # Mount โฟลเดอร์สำหรับเก็บประวัติ log กิจกรรมต่างๆ
       - /opt/hotel-ecs/logs:/app/backend/logs
+      # Mount DBus system bus socket to talk to host NetworkManager
+      - /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket
     ports:
       - "3000:3000"
-    command: sh -c "cd backend && npm install --omit=dev && node server.js"
+    command: sh -c "apk add --no-cache networkmanager networkmanager-cli && cd backend && npm install --omit=dev && node server.js"
     restart: always
 
   # 2. Cloudflare Tunnel สำหรับเชื่อมต่อกลับไปยังคลาวด์สาธารณะโดยไม่ต้องทำ Forward Port

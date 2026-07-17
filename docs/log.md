@@ -30,5 +30,4 @@ timestamp: "2026-06-28T02:00:00+07:00"
 | **2026-07-09** | อัปเดตไฟล์ `docs/raw/MANIFEST.sha256` และยืนยันความถูกต้องของคลังข้อมูลดิบทั้งหมด ผ่านสคริปต์ `docs_verify.js` สำเร็จ 100% | Librarian (Antigravity) |
 | **2026-07-10** | จัดทำคู่มือ [[wiki/system_cost_and_maintenance|ทะเบียนค่าใช้จ่ายและการบำรุงรักษาระบบ]] เพื่อเก็บบันทึกประวัติและเตือนการเรียกเก็บเงินของ Google Workspace และโดเมน nithep.com | Librarian (Antigravity) |
 | **2026-07-14** | ตรวจสุขภาพ Vault (raw สะอาด) และอัปเดตลิงก์ wiki ที่ตกหล่นเข้าสู่สารบัญ `index.md` รวมถึงตรวจสอบการเชื่อมต่อ Pi 4 (พบปัญหา Ping timeout) | Librarian (Antigravity) |
-
-
+| **2026-07-17** | วิเคราะห์และแก้ไขปัญหา `EHOSTUNREACH` (Connection Lost) พร้อมอัปเกรดระบบพยายามเชื่อมต่ออัตโนมัติแบบวนซ้ำ (Periodic Reconnection Loop) สำหรับ PBX | Antigravity |

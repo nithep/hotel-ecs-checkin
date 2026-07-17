@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { QrCode, ScanLine, CheckCircle2, XCircle, Bed, User, ArrowRight } from 'lucide-react';
 
@@ -12,10 +13,11 @@ interface Room {
 }
 
 const Scan = () => {
+  const [searchParams] = useSearchParams();
   const [status, setStatus] = useState<ScanStatus>('idle');
   const [flow, setFlow] = useState<FlowType>('checkin');
   const [rooms, setRooms] = useState<Room[]>([]);
-  const [selectedRoom, setSelectedRoom] = useState<string>('');
+  const [selectedRoom, setSelectedRoom] = useState<string>(searchParams.get('room') || '');
   const [guestName, setGuestName] = useState<string>('');
   const [pdpaConsent, setPdpaConsent] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -26,6 +28,15 @@ const Scan = () => {
       const data = await res.json();
       if (data.success) {
         setRooms(data.rooms);
+        // Auto-select flow based on room status from QR URL param
+        const qrRoom = searchParams.get('room');
+        if (qrRoom) {
+          const targetRoom = data.rooms.find((r: Room) => String(r.id) === qrRoom);
+          if (targetRoom) {
+            // ถ้าห้องถูก occupied อยู่แล้ว ให้ auto-switch ไป checkout mode
+            setFlow(targetRoom.status === 'occupied' ? 'checkout' : 'checkin');
+          }
+        }
       }
     } catch (error) {
       console.error("Failed to fetch rooms", error);
