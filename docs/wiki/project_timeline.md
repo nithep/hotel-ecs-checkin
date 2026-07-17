@@ -247,7 +247,7 @@
 ### การติดตั้งระบบ PWA และปรับปรุง Responsive UI สำหรับมือถือ (PWA Integration & Mobile UI/UX Optimization)
 - **วันที่:** 2026-07-17 (เข้าสู่เช้ามืด 2026-07-18)
 - **รายละเอียด:**
-  - 📱 **Progressive Web App (PWA):** ติดตั้งปลั๊กอิน `vite-plugin-pwa` ลงในส่วนของ Frontend สำเร็จ และตั้งค่า Manifest ของแอปให้รันในโหมด `standalone` และ `portrait` พร้อมจัดการ Service Worker สำหรับแคชไฟล์ ช่วยให้พนักงานสามารถกด "Add to Home Screen" เพื่อติดตั้งลงบนหน้าจอมือถือและแสดงผลเต็มหน้าจอเสมือน Native App 100%
+  - 📱 **Progressive Web App (PWA):** ติดตั้งปลั๊กอิน `vite-plugin-pwa` ลงในส่วนของ Frontend สำเร็จ และตั้งค่า Manifest ของแอปให้รันในโหมด `standalone` และ `portrait` พร้อมจัดการ Service Worker สำหรับแคชไฟล์ ช่วยให้พนักงานสามารถกด "Add to Home Screen" เพื่อติดตั้งลงบนหน้าจอมือถือและแสดงผลเต็มหน้าจอเสมือน Native App 100% (ปรับปรุงเพิ่มเติม: เปลี่ยนไฟล์ไอคอน PWA และ `apple-touch-icon` จากรูปแบบ SVG ไปเป็น PNG ขนาด 192x192px และ 512x512px ที่ผ่านการสร้างขึ้นใหม่ เพื่อให้ระบบปฏิบัติการ iOS/Safari ยอมรับสถานะ PWA และแสดงไอคอนบนหน้าจอหลักได้อย่างเสถียร)
   - 🧭 **Mobile Bottom Navigation:** ปรับปรุงโครงสร้างระบบนำทางใน `Layout.tsx` โดยแยกเป็นเมนูด้านบนสำหรับ Desktop และเมนูติดแน่นด้านล่างสำหรับมือถือ (Mobile Bottom Nav) พร้อมจัดสรรปุ่มไอคอนและคำอธิบาย 7 หน้าหลักได้อย่างพอเหมาะพอดี และเพิ่มระยะขอบด้านล่างของหน้าหลักเพื่อไม่ให้โดนเมนูด้านล่างบัง
   - 🎨 **Responsive Layout Refactoring:**
     - ปรับปรุง `<meta name="viewport">` ใน `index.html` ให้รองรับ `viewport-fit=cover` เพื่อแก้ไขการแสดงผลในส่วนรอยบากของหน้าจอสมาร์ทโฟน
