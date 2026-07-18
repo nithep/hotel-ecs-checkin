@@ -13,11 +13,26 @@ const { TelegramBotService } = require('./services/telegram_bot');
 const { GoogleNotifier } = require('./services/google_notifier');
 const { WiFiService } = require('./services/wifi_service');
 const apiKeyService = require('./services/apiKeyService');
+const {
+    PRIVACY_POLICY,
+    validateCheckinConsent,
+    buildConsentRecord,
+    sanitizePublicRoom,
+    sanitizeStaffRoom,
+    getConsentAudit,
+    initPdpaConsentTable,
+    saveConsentRecord,
+    withdrawConsent,
+    cleanupOldConsents,
+} = require('./services/pdpa_service');
 const rateLimit = require('express-rate-limit');
 const cronScheduler = require('./services/cron_scheduler');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// ใช้ IP จริงจาก reverse proxy (Cloudflare Tunnel / nginx) สำหรับบันทึก PDPA consent
+app.set('trust proxy', 1);
 
 // ─── PBX Connector Setup ──────────────────────────────────────────────────
 // PBX_MODE: 'mock' (default), 'tcp' (simulator/real PBX), 'serial' (RS-232)
@@ -179,7 +194,20 @@ const rateLimiter = new RateLimiter({
 // Initialize Audit Log table
 initAuditLog(db.db);
 apiKeyService.initApiKeyDb();
-console.log('[SAFETY] ✅ Approval Gate, Audit Log, Rate Limiter, API Key DB initialized');
+initPdpaConsentTable(db.db).catch(err => {
+    console.error('[PDPA] ⚠️ Failed to initialize PDPA table:', err.message);
+});
+
+// Schedule daily cleanup of old consent records (keep for 1 year)
+cronScheduler.scheduleJob('0 2 * * *', async () => {
+    try {
+        await cleanupOldConsents(db.db, 365);
+    } catch (err) {
+        console.error('[PDPA] Cleanup job failed:', err.message);
+    }
+}, 'pdpa_cleanup');
+
+console.log('[SAFETY] ✅ Approval Gate, Audit Log, Rate Limiter, API Key DB, PDPA initialized');
 
 // Setup Express Rate Limit for Open API
 const externalApiLimiter = rateLimit({
@@ -398,32 +426,58 @@ app.get('/api/rooms', (req, res) => {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     
-    let isStaff = false;
+    let userRole = 'public'; // public, guest, front_desk, owner
     if (token) {
         try {
             const decoded = jwt.verify(token, JWT_SECRET);
             if (decoded.role === 'front_desk' || decoded.role === 'owner') {
-                isStaff = true;
+                userRole = decoded.role;
+            } else if (decoded.role === 'guest') {
+                userRole = 'guest';
             }
         } catch (e) {
-            // Invalid token
+            // Invalid token - treat as public
         }
     }
 
     db.getAllRooms((err, rooms) => {
         if (err) return res.status(500).json({ error: err.message });
         
-        if (isStaff) {
-            res.json({ success: true, rooms });
+        let processedRooms;
+        
+        if (userRole === 'owner') {
+            // Owner sees full data (but still masked for privacy in lists)
+            processedRooms = rooms.map(r => sanitizeStaffRoom(r));
+        } else if (userRole === 'front_desk') {
+            // Front desk sees masked data
+            processedRooms = rooms.map(r => sanitizeStaffRoom(r));
+        } else if (userRole === 'guest') {
+            // Guest sees only their room with limited info + anonymized others
+            const guestRoomNumber = req.user?.roomNumber;
+            processedRooms = rooms.map(r => {
+                if (String(r.id) === String(guestRoomNumber)) {
+                    // Show own room with some details
+                    return {
+                        id: r.id,
+                        status: r.status,
+                        power: r.power,
+                        checkout_date: r.checkout_date,
+                        isMyRoom: true
+                    };
+                }
+                // Other rooms are fully anonymized
+                return sanitizePublicRoom(r);
+            });
         } else {
-            // Anonymize guest details for public / guests (PDPA Compliance)
-            const anonymizedRooms = rooms.map(r => ({
-                id: r.id,
-                status: r.status,
-                power: r.power
-            }));
-            res.json({ success: true, rooms: anonymizedRooms });
+            // Public sees fully anonymized data
+            processedRooms = rooms.map(r => sanitizePublicRoom(r));
         }
+        
+        res.json({ 
+            success: true, 
+            rooms: processedRooms,
+            role: userRole
+        });
     });
 });
 
@@ -435,8 +489,30 @@ app.post('/api/checkin', async (req, res) => {
         return res.status(400).json({ error: 'roomNumber is required' });
     }
 
-    if (!dryRun && !dry_run && !pdpaConsent) {
-        return res.status(403).json({ error: 'PDPA Consent is required for check-in' });
+    if (!dryRun && !dry_run) {
+        // Validate PDPA consent for production check-in
+        if (!pdpaConsent) {
+            return res.status(403).json({ 
+                error: 'PDPA Consent is required for check-in',
+                privacyPolicyUrl: '/api/pdpa/privacy-policy'
+            });
+        }
+
+        // Build consent validation object
+        const consentValidationData = {
+            privacyPolicyAccepted: pdpaConsent.privacyPolicyAccepted || pdpaConsent === true,
+            acceptedAt: pdpaConsent.acceptedAt ? new Date(pdpaConsent.acceptedAt) : new Date()
+        };
+
+        // Validate consent
+        const validation = validateCheckinConsent(consentValidationData);
+        if (!validation.valid) {
+            return res.status(400).json({
+                error: 'Invalid PDPA consent',
+                details: validation.errors,
+                privacyPolicyUrl: '/api/pdpa/privacy-policy'
+            });
+        }
     }
 
     console.log(`[API] Received Check-in Request for Room: ${roomNumber} (Dry-run: ${Boolean(dryRun || dry_run)})`);
@@ -481,25 +557,68 @@ app.post('/api/checkin', async (req, res) => {
             });
         }
 
-        // Persist to Database with PDPA data
+        // Save PDPA consent record first
+        let consentHash = null;
+        if (pdpaConsent) {
+            try {
+                const consentRecord = buildConsentRecord({
+                    guestName,
+                    guestEmail,
+                    roomNumber,
+                    ipAddress: req.ip,
+                    acceptedAt: pdpaConsent.acceptedAt ? new Date(pdpaConsent.acceptedAt) : new Date()
+                });
+                
+                const savedConsent = await saveConsentRecord(db.db, consentRecord);
+                consentHash = savedConsent.consentHash;
+                console.log(`[PDPA] ✅ Consent saved for room ${roomNumber}: ${consentHash}`);
+            } catch (consentErr) {
+                console.error('[PDPA] ⚠️ Failed to save consent:', consentErr.message);
+                // Continue with check-in even if consent save fails (log error but don't block)
+            }
+        }
+
+        // Persist to Database
         const dbOptions = {
             guestName,
             guestEmail,
             consentGivenAt: pdpaConsent ? new Date().toISOString() : null,
             consentIp: req.ip,
+            consentHash,
             checkoutDate: checkoutDateTime.toISOString()
         };
-        db.updateRoomState(roomNumber, 'occupied', true, dbOptions, (err) => {
-            if (err) return res.status(500).json({ error: 'Database update failed' });
+        
+        db.updateRoomState(roomNumber, 'occupied', true, dbOptions, async (err) => {
+            if (err) {
+                console.error('[DB] Check-in database update failed:', err.message);
+                return res.status(500).json({ error: 'Database update failed' });
+            }
             
             // Notify Front Desk via Google Chat (and trigger email via Sheets Webhook)
             googleNotifier.sendCheckinAlert({ roomNumber, guestName, guestEmail });
 
+            // Log PDPA compliance event
+            if (consentHash) {
+                await appendAuditEvent(db.db, {
+                    traceId: command.traceId,
+                    eventType: 'PDPA_CONSENT_RECORDED',
+                    command: { ...command, consentHash },
+                    pdpa: {
+                        guestName,
+                        roomNumber,
+                        consentHash,
+                        ipAddress: req.ip
+                    }
+                }).catch(e => console.error('[AUDIT] Failed to log PDPA event:', e.message));
+            }
+
             res.json({
+                success: true,
                 message: 'Check-in successful',
                 trace_id: command.traceId,
                 hardware_status: safetyResult.result,
                 token: guestToken,
+                pdpaCompliant: !!consentHash
             });
         });
     } catch (err) {
@@ -756,20 +875,36 @@ app.post('/api/rooms/control', verifyStaffToken, async (req, res) => {
 app.post('/api/v1/external/checkin', externalApiLimiter, (req, res) => {
     const apiKey = req.headers['x-api-key'];
     if (!apiKey) {
-        return res.status(401).json({ error: 'API Key is required' });
+        return res.status(401).json({ 
+            error: 'API Key is required',
+            documentation: 'Please contact admin to get your API key'
+        });
     }
 
     apiKeyService.validateApiKey(apiKey, async (err, isValid) => {
         if (err || !isValid) {
-            return res.status(403).json({ error: 'Invalid or revoked API Key' });
+            console.warn(`[OPEN-API] Invalid API key attempt: ${apiKey?.substring(0, 8)}...`);
+            return res.status(403).json({ 
+                error: 'Invalid or revoked API Key',
+                message: 'Your API key may have been revoked. Please contact admin.'
+            });
         }
 
-        const { roomNumber, guestName, dryRun } = req.body;
+        const { roomNumber, guestName, guestEmail, dryRun, pdpaConsentHandled } = req.body;
         if (!roomNumber) {
             return res.status(400).json({ error: 'roomNumber is required' });
         }
 
-        console.log(`[OPEN-API] Check-in request for Room: ${roomNumber} via API Key`);
+        // For external APIs, we assume the 3rd party handles PDPA consent
+        // but they must declare that they've handled it
+        if (!dryRun && !pdpaConsentHandled) {
+            return res.status(400).json({
+                error: 'External API must confirm PDPA consent has been obtained from guest',
+                solution: 'Set pdpaConsentHandled: true in request body to confirm you have obtained proper consent'
+            });
+        }
+
+        console.log(`[OPEN-API] Check-in request for Room: ${roomNumber} via API Key (${apiKey?.substring(0, 8)}...)`);
 
         const command = buildCommand('ROOM_ON', roomNumber, {
             source: 'external_api',
@@ -796,10 +931,37 @@ app.post('/api/v1/external/checkin', externalApiLimiter, (req, res) => {
                 });
             }
 
-            // For external checkin, PDPA is handled by 3rd party
-            db.updateRoomState(roomNumber, 'occupied', true, { guestName, consentGivenAt: new Date().toISOString() }, (err) => {
-                if (err) return res.status(500).json({ error: 'Database update failed' });
-                googleNotifier.sendCheckinAlert({ roomNumber, guestName: guestName || 'External API' });
+            // For external checkin, PDPA is handled by 3rd party (they confirmed via pdpaConsentHandled)
+            // We still record that consent was handled externally
+            const dbOptions = { 
+                guestName, 
+                guestEmail,
+                consentGivenAt: new Date().toISOString(),
+                consentIp: 'EXTERNAL_API',
+                consentSource: 'external_pms'
+            };
+
+            db.updateRoomState(roomNumber, 'occupied', true, dbOptions, (err) => {
+                if (err) {
+                    console.error('[DB] External check-in DB update failed:', err.message);
+                    return res.status(500).json({ error: 'Database update failed' });
+                }
+                
+                googleNotifier.sendCheckinAlert({ 
+                    roomNumber, 
+                    guestName: guestName || 'External API',
+                    guestEmail,
+                    source: 'External PMS'
+                });
+
+                // Log external API usage
+                appendAuditEvent(db.db, {
+                    traceId: command.traceId,
+                    eventType: 'EXTERNAL_API_CHECKIN',
+                    command: { ...command, apiKeyPrefix: apiKey?.substring(0, 8) },
+                    pdpa: { handledExternally: true }
+                }).catch(e => console.error('[AUDIT] Failed to log external API event:', e.message));
+
                 res.json({
                     success: true,
                     message: 'External Check-in successful',
@@ -812,6 +974,314 @@ app.post('/api/v1/external/checkin', externalApiLimiter, (req, res) => {
             res.status(500).json({ error: `Command failed: ${err.message}` });
         }
     });
+});
+
+// External checkout endpoint
+app.post('/api/v1/external/checkout', externalApiLimiter, (req, res) => {
+    const apiKey = req.headers['x-api-key'];
+    if (!apiKey) {
+        return res.status(401).json({ error: 'API Key is required' });
+    }
+
+    apiKeyService.validateApiKey(apiKey, async (err, isValid) => {
+        if (err || !isValid) {
+            return res.status(403).json({ error: 'Invalid or revoked API Key' });
+        }
+
+        const { roomNumber, dryRun } = req.body;
+        if (!roomNumber) {
+            return res.status(400).json({ error: 'roomNumber is required' });
+        }
+
+        console.log(`[OPEN-API] Checkout request for Room: ${roomNumber} via API Key`);
+
+        const command = buildCommand('ROOM_OFF', roomNumber, {
+            source: 'external_api',
+            flow: 'checkout',
+            dryRun: Boolean(dryRun),
+        });
+
+        try {
+            const safetyResult = await executeWithSafety(command, async () => {
+                return await pbx.checkOut(roomNumber);
+            });
+
+            if (safetyResult.blocked) {
+                const statusCode = safetyResult.reason === 'RATE_LIMITED' ? 429 : 202;
+                return res.status(statusCode).json(safetyResult);
+            }
+
+            if (safetyResult.dryRun) {
+                return res.json({
+                    message: 'External Checkout (Dry-run) successful',
+                    trace_id: command.traceId,
+                    hardware_status: safetyResult.result,
+                });
+            }
+
+            db.updateRoomState(roomNumber, 'vacant', false, (err) => {
+                if (err) return res.status(500).json({ error: 'Database update failed' });
+                
+                googleNotifier.sendCheckoutAlert({ roomNumber, source: 'External PMS' });
+
+                appendAuditEvent(db.db, {
+                    traceId: command.traceId,
+                    eventType: 'EXTERNAL_API_CHECKOUT',
+                    command: { ...command, apiKeyPrefix: apiKey?.substring(0, 8) }
+                }).catch(e => console.error('[AUDIT] Failed to log external API event:', e.message));
+
+                res.json({
+                    success: true,
+                    message: 'External Checkout successful',
+                    trace_id: command.traceId,
+                    hardware_status: safetyResult.result,
+                });
+            });
+        } catch (err) {
+            console.error(`[OPEN-API] Checkout failed:`, err.message);
+            res.status(500).json({ error: `Command failed: ${err.message}` });
+        }
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PDPA Compliance Routes (/api/pdpa)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Get Privacy Policy
+app.get('/api/pdpa/privacy-policy', (req, res) => {
+    res.json({
+        success: true,
+        policy: PRIVACY_POLICY,
+        version: '1.0',
+        lastUpdated: '2025-01-01'
+    });
+});
+
+// Submit consent for check-in
+app.post('/api/pdpa/consent', async (req, res) => {
+    const { guestName, guestEmail, roomNumber, privacyPolicyAccepted, acceptedAt } = req.body;
+
+    // Validate required fields
+    if (!guestName || !roomNumber) {
+        return res.status(400).json({ error: 'guestName and roomNumber are required' });
+    }
+
+    // Build consent data object
+    const consentData = {
+        privacyPolicyAccepted,
+        acceptedAt: acceptedAt ? new Date(acceptedAt) : new Date()
+    };
+
+    // Validate consent
+    const validation = validateCheckinConsent(consentData);
+    if (!validation.valid) {
+        return res.status(400).json({
+            error: 'Invalid consent',
+            details: validation.errors
+        });
+    }
+
+    try {
+        // Build consent record
+        const consentRecord = buildConsentRecord({
+            guestName,
+            guestEmail,
+            roomNumber,
+            ipAddress: req.ip,
+            acceptedAt: consentData.acceptedAt
+        });
+
+        // Save to database
+        const savedRecord = await saveConsentRecord(db.db, consentRecord);
+
+        console.log(`[PDPA] ✅ Consent recorded for room ${roomNumber} by ${guestName}`);
+
+        res.json({
+            success: true,
+            message: 'Consent recorded successfully',
+            consentHash: savedRecord.consentHash,
+            acceptedAt: savedRecord.acceptedAt
+        });
+    } catch (err) {
+        console.error('[PDPA] Failed to record consent:', err.message);
+        res.status(500).json({ error: 'Failed to record consent' });
+    }
+});
+
+// Withdraw consent (Guest or Owner only)
+app.post('/api/pdpa/withdraw', verifyOwnerToken, async (req, res) => {
+    const { consentHash, reason } = req.body;
+
+    if (!consentHash) {
+        return res.status(400).json({ error: 'consentHash is required' });
+    }
+
+    try {
+        const withdrawn = await withdrawConsent(db.db, consentHash, reason);
+
+        if (!withdrawn) {
+            return res.status(404).json({ error: 'Consent record not found or already withdrawn' });
+        }
+
+        console.log(`[PDPA] ✅ Consent withdrawn: ${consentHash}`);
+
+        res.json({
+            success: true,
+            message: 'Consent withdrawn successfully'
+        });
+    } catch (err) {
+        console.error('[PDPA] Failed to withdraw consent:', err.message);
+        res.status(500).json({ error: 'Failed to withdraw consent' });
+    }
+});
+
+// Get consent audit trail (Owner only)
+app.get('/api/pdpa/audit', verifyOwnerToken, async (req, res) => {
+    try {
+        const records = await getConsentAudit(db.db, {
+            roomNumber: req.query.room_number,
+            guestName: req.query.guest_name,
+            consentHash: req.query.consent_hash,
+            limit: parseInt(req.query.limit) || 100
+        });
+
+        res.json({
+            success: true,
+            count: records.length,
+            records
+        });
+    } catch (err) {
+        console.error('[PDPA] Failed to fetch consent audit:', err.message);
+        res.status(500).json({ error: 'Failed to fetch consent audit' });
+    }
+});
+
+// Data Subject Access Request (DSAR) - Get all personal data for a guest
+app.get('/api/pdpa/data-access', verifyOwnerToken, async (req, res) => {
+    const { guestName, roomNumber } = req.query;
+
+    if (!guestName && !roomNumber) {
+        return res.status(400).json({ error: 'Either guestName or roomNumber is required' });
+    }
+
+    try {
+        // Get consent records
+        const consentRecords = await getConsentAudit(db.db, {
+            guestName,
+            roomNumber,
+            limit: 1000
+        });
+
+        // Get room history from main database
+        const roomHistory = await new Promise((resolve, reject) => {
+            let query = 'SELECT * FROM rooms WHERE 1=1';
+            const params = [];
+
+            if (roomNumber) {
+                query += ' AND id = ?';
+                params.push(String(roomNumber));
+            }
+
+            if (guestName) {
+                query += ' AND guest_name LIKE ?';
+                params.push(`%${guestName}%`);
+            }
+
+            db.db.all(query, params, (err, rows) => {
+                if (err) reject(err);
+                else resolve(rows || []);
+            });
+        });
+
+        res.json({
+            success: true,
+            dataSubject: {
+                guestName,
+                roomNumber
+            },
+            consentRecords,
+            roomHistory,
+            totalRecords: consentRecords.length + roomHistory.length,
+            note: 'This is your personal data under PDPA Section 30. You have the right to access, correct, or delete this data.'
+        });
+    } catch (err) {
+        console.error('[PDPA] DSAR failed:', err.message);
+        res.status(500).json({ error: 'Failed to retrieve personal data' });
+    }
+});
+
+// Delete personal data (Right to be forgotten - Owner only)
+app.delete('/api/pdpa/data', verifyOwnerToken, async (req, res) => {
+    const { guestName, roomNumber, olderThanDays } = req.body;
+
+    if (!guestName && !roomNumber) {
+        return res.status(400).json({ error: 'Either guestName or roomNumber is required' });
+    }
+
+    try {
+        // Delete consent records
+        let consentDeleteQuery = 'DELETE FROM pdpa_consents WHERE 1=1';
+        const consentParams = [];
+
+        if (roomNumber) {
+            consentDeleteQuery += ' AND room_number = ?';
+            consentParams.push(String(roomNumber));
+        }
+
+        if (guestName) {
+            consentDeleteQuery += ' AND guest_name LIKE ?';
+            consentParams.push(`%${guestName}%`);
+        }
+
+        if (olderThanDays) {
+            consentDeleteQuery += ' AND created_at < datetime(\'now\', \'-' + parseInt(olderThanDays) + ' days\')';
+        }
+
+        const consentResult = await new Promise((resolve, reject) => {
+            db.db.run(consentDeleteQuery, consentParams, function(err) {
+                if (err) reject(err);
+                else resolve(this.changes);
+            });
+        });
+
+        // Anonymize room records (instead of deleting to maintain integrity)
+        let roomUpdateQuery = 'UPDATE rooms SET guest_name = NULL, guest_email = NULL, checkin_date = NULL, checkout_date = NULL WHERE 1=1';
+        const roomParams = [];
+
+        if (roomNumber) {
+            roomUpdateQuery += ' AND id = ?';
+            roomParams.push(String(roomNumber));
+        }
+
+        if (guestName) {
+            roomUpdateQuery += ' AND guest_name LIKE ?';
+            roomParams.push(`%${guestName}%`);
+        }
+
+        if (olderThanDays) {
+            roomUpdateQuery += ' AND checkin_date < datetime(\'now\', \'-' + parseInt(olderThanDays) + ' days\')';
+        }
+
+        const roomResult = await new Promise((resolve, reject) => {
+            db.db.run(roomUpdateQuery, roomParams, function(err) {
+                if (err) reject(err);
+                else resolve(this.changes);
+            });
+        });
+
+        console.log(`[PDPA] 🗑️ Data deletion: ${consentResult} consent records, ${roomResult} room records anonymized`);
+
+        res.json({
+            success: true,
+            message: 'Personal data deleted/anonymized successfully',
+            deletedConsentRecords: consentResult,
+            anonymizedRoomRecords: roomResult
+        });
+    } catch (err) {
+        console.error('[PDPA] Data deletion failed:', err.message);
+        res.status(500).json({ error: 'Failed to delete personal data' });
+    }
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1326,7 +1796,7 @@ ${troubleshootingGuide}
 
 Additionally, you can control the hotel hardware (relays) on behalf of the user when they express a clear intent to turn ON or OFF lights/power for a specific room.
 If you detect an intent to control room power (e.g., "เปิดไฟห้อง 101", "ปิดไฟ 102", "ช่วยเช็คเอาท์ห้อง 103"):
-You MUST output a JSON block at the very end of your response inside a markdown code block tagged with 'control-command', like this:
+You MUST output a JSON block at the very end of your response inside a code block tagged with 'control-command', like this:
 \`\`\`control-command
 {"controlRequest": true, "action": "ON" | "OFF", "room": "101"}
 \`\`\`

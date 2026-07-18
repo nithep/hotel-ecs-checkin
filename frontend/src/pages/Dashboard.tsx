@@ -14,9 +14,15 @@ import {
   Clock, 
   Lock,
   Video,
-  Code
+  Code,
+  Wifi,
+  WifiOff,
+  Power,
+  Unlock,
+  RefreshCw
 } from 'lucide-react';
 import TerminalStatus from '../components/TerminalStatus';
+import { api, auth } from '../lib/api';
 
 interface Room {
   id: number;
@@ -92,10 +98,10 @@ const Dashboard = () => {
   const [pbxInfo, setPbxInfo] = useState<{ mode: string; isReady: boolean; details: string } | null>(null);
   
   // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState(!!localStorage.getItem('pms_token'));
+  const [isAuthenticated, setIsAuthenticated] = useState(auth.isAuthenticated());
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
-  const [role, setRole] = useState(localStorage.getItem('pms_role') || '');
+  const [role, setRole] = useState(auth.getRole() || '');
 
   // Modal State for Approval Reason
   const [showReasonModal, setShowReasonModal] = useState(false);
@@ -105,16 +111,8 @@ const Dashboard = () => {
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
 
-  // Helper function for Authenticated fetch calls
-  const fetchWithAuth = async (url: string, options: RequestInit = {}) => {
-    const token = localStorage.getItem('pms_token');
-    const headers = {
-      'Content-Type': 'application/json',
-      ...options.headers,
-      ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-    };
-    return fetch(url, { ...options, headers });
-  };
+  // WebSocket/EventSource connection for real-time updates
+  const [eventSource, setEventSource] = useState<EventSource | null>(null);
 
   const handleKeypadPress = (val: string) => {
     if (pin.length >= 4) return;
@@ -138,51 +136,38 @@ const Dashboard = () => {
 
   const verifyPin = async (enteredPin: string) => {
     try {
-      const response = await fetch('/api/auth/verify-pin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pin: enteredPin })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        localStorage.setItem('pms_token', data.token);
-        localStorage.setItem('pms_role', data.role);
-        setRole(data.role);
-        setIsAuthenticated(true);
-        setPin('');
-        if (data.role === 'front_desk') {
-          setActiveTab('rooms');
-        }
-      } else {
-        setPinError(data.error || 'รหัส PIN ไม่ถูกต้อง');
-        setPin('');
+      const response = await api.verifyPin(enteredPin);
+      const data = response.data;
+      
+      auth.setToken(data.token);
+      auth.setRole(data.role);
+      setRole(data.role);
+      setIsAuthenticated(true);
+      setPin('');
+      
+      if (data.role === 'front_desk') {
+        setActiveTab('rooms');
       }
-    } catch (e) {
-      setPinError('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์');
+    } catch (e: any) {
+      setPinError(e.message || 'รหัส PIN ไม่ถูกต้อง');
       setPin('');
     }
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('pms_token');
-    localStorage.removeItem('pms_role');
+    auth.removeToken();
     setIsAuthenticated(false);
     setRole('');
   };
 
   const fetchDiagnostics = async () => {
     try {
-      const res = await fetchWithAuth('/api/diagnostics/health');
-      if (res.status === 401 || res.status === 403) {
-        handleLogout();
-        return;
-      }
-      const data = await res.json();
-      if (data.success && data.report?.pbx) {
+      const res = await api.getDiagnostics();
+      if (res.data.success && res.data.report?.pbx) {
         setPbxInfo({
-          mode: data.report.pbx.mode,
-          isReady: data.report.pbx.isReady,
-          details: data.report.pbx.details
+          mode: res.data.report.pbx.mode,
+          isReady: res.data.report.pbx.isReady,
+          details: res.data.report.pbx.details
         });
       }
     } catch (error) {
@@ -192,14 +177,9 @@ const Dashboard = () => {
 
   const fetchRooms = async () => {
     try {
-      const res = await fetchWithAuth('/api/rooms');
-      if (res.status === 401 || res.status === 403) {
-        handleLogout();
-        return;
-      }
-      const data = await res.json();
-      if (data.success) {
-        setRooms(data.rooms);
+      const res = await api.getRooms();
+      if (res.data.success) {
+        setRooms(res.data.rooms);
       }
     } catch (error) {
       console.error("Failed to fetch rooms", error);
@@ -208,11 +188,9 @@ const Dashboard = () => {
 
   const fetchPendingApprovals = async () => {
     try {
-      const res = await fetchWithAuth('/api/admin/approval');
-      if (res.status === 401 || res.status === 403) return;
-      const data = await res.json();
-      if (data.success) {
-        setPendingApprovals(data.pending);
+      const res = await api.getPendingApprovals();
+      if (res.data.success) {
+        setPendingApprovals(res.data.pending);
       }
     } catch (error) {
       console.error("Failed to fetch pending approvals", error);
@@ -222,11 +200,9 @@ const Dashboard = () => {
   const fetchAuditLogs = async () => {
     if (role !== 'owner') return;
     try {
-      const res = await fetchWithAuth('/api/audit/events?limit=25');
-      if (res.status === 401 || res.status === 403) return;
-      const data = await res.json();
-      if (data.success) {
-        setAuditLogs(data.events);
+      const res = await api.getAuditEvents({ limit: 25 });
+      if (res.data.success) {
+        setAuditLogs(res.data.events);
       }
     } catch (error) {
       console.error("Failed to fetch audit logs", error);
@@ -236,11 +212,9 @@ const Dashboard = () => {
   const fetchApiKeys = async () => {
     if (role !== 'owner') return;
     try {
-      const res = await fetchWithAuth('/api/admin/apikeys');
-      if (res.status === 401 || res.status === 403) return;
-      const data = await res.json();
-      if (data.success) {
-        setApiKeys(data.keys);
+      const res = await api.getApiKeys();
+      if (res.data.success) {
+        setApiKeys(res.data.keys);
       }
     } catch (error) {
       console.error("Failed to fetch API keys", error);
@@ -257,6 +231,34 @@ const Dashboard = () => {
     await Promise.all(promises);
     setIsLoading(false);
   };
+
+  // Setup EventSource for real-time updates
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const es = new EventSource('/api/telemetry/stream');
+    
+    es.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      console.log('[SSE]', data);
+      
+      // Auto-refresh rooms on PBX events
+      if (data.type === 'pbx') {
+        fetchRooms();
+      }
+    };
+
+    es.onerror = (error) => {
+      console.error('[SSE] Connection error:', error);
+      es.close();
+    };
+
+    setEventSource(es);
+
+    return () => {
+      es.close();
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -278,25 +280,22 @@ const Dashboard = () => {
 
   const handleCheckout = async (roomId: number) => {
     try {
-      const response = await fetchWithAuth('/api/checkout', {
-        method: 'POST',
-        body: JSON.stringify({ roomNumber: roomId })
-      });
-      const data = await response.json();
+      const response = await api.checkOut(String(roomId));
+      const data = response.data;
       
       if (response.status === 202 && data.reason === 'APPROVAL_REQUIRED') {
         showAlert('warning', `⚠️ คำสั่งเช็คเอาท์ห้อง ${roomId} ถูกส่งไปยังระบบความปลอดภัย (รออนุมัติเนื่องจากอยู่นอกเวลาทำการ)`);
         loadAllData();
-      } else if (response.ok) {
+      } else if (response.status === 200) {
         showAlert('success', `✅ เช็คเอาท์ห้อง ${roomId} สำเร็จ`);
         fetchRooms();
         if (role === 'owner') fetchAuditLogs();
       } else {
         showAlert('error', `❌ เกิดข้อผิดพลาด: ${data.error || 'ไม่สามารถทำรายการได้'}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Checkout failed", error);
-      showAlert('error', '❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
+      showAlert('error', error.message || '❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
     }
   };
 
@@ -312,30 +311,12 @@ const Dashboard = () => {
     setIsSubmittingAction(true);
 
     try {
-      const endpoint = `/api/admin/approval/${selectedApprovalId}/${modalAction}`;
-      const response = await fetchWithAuth(endpoint, {
-        method: 'POST',
-        body: JSON.stringify({ 
-          reason: actionReason,
-          decidedBy: `staff:${role}`
-        })
-      });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to process decision');
-      }
-
       if (modalAction === 'approve') {
-        const execResponse = await fetchWithAuth(`/api/admin/approval/${selectedApprovalId}/execute`, {
-          method: 'POST',
-        });
-        const execData = await execResponse.json();
-        if (!execResponse.ok) {
-          throw new Error(execData.error || 'Failed to execute approved command');
-        }
+        await api.approveCommand(selectedApprovalId, actionReason, `staff:${role}`);
+        await api.executeApproved(selectedApprovalId);
         showAlert('success', '✅ อนุมัติและสั่งการไฟฟ้าเรียบร้อยแล้ว');
       } else {
+        await api.rejectCommand(selectedApprovalId, actionReason, `staff:${role}`);
         showAlert('success', '❌ ปฏิเสธคำสั่งเรียบร้อยแล้ว');
       }
 
@@ -354,19 +335,11 @@ const Dashboard = () => {
     if (!name) return;
     
     try {
-      const response = await fetchWithAuth('/api/admin/apikeys', {
-        method: 'POST',
-        body: JSON.stringify({ name })
-      });
-      const data = await response.json();
-      if (response.ok) {
-        showAlert('success', `✅ สร้าง API Key สำหรับ ${name} แล้ว (คัดลอกคีย์: ${data.key.key})`);
-        fetchApiKeys();
-      } else {
-        showAlert('error', `❌ ${data.error}`);
-      }
-    } catch (error) {
-      showAlert('error', '❌ ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์ได้');
+      const response = await api.createApiKey(name);
+      showAlert('success', `✅ สร้าง API Key สำหรับ ${name} แล้ว (คัดลอกคีย์: ${response.data.key.apiKey})`);
+      fetchApiKeys();
+    } catch (error: any) {
+      showAlert('error', `❌ ${error.message}`);
     }
   };
 
@@ -375,13 +348,11 @@ const Dashboard = () => {
     if (!confirm("คุณแน่ใจหรือไม่ที่จะเพิกถอน API Key นี้? PMS จะไม่สามารถสั่งการได้อีกต่อไป")) return;
     
     try {
-      const response = await fetchWithAuth(`/api/admin/apikeys/${id}`, { method: 'DELETE' });
-      if (response.ok) {
-        showAlert('success', '✅ เพิกถอน API Key แล้ว');
-        fetchApiKeys();
-      }
-    } catch (error) {
-      showAlert('error', '❌ ล้มเหลว');
+      await api.revokeApiKey(String(id));
+      showAlert('success', '✅ เพิกถอน API Key แล้ว');
+      fetchApiKeys();
+    } catch (error: any) {
+      showAlert('error', `❌ ${error.message}`);
     }
   };
 
@@ -390,16 +361,11 @@ const Dashboard = () => {
     if (!confirm("⚠️ คุณแน่ใจหรือไม่ที่จะลบประวัติการเช็คอินทั้งหมด? การกระทำนี้ไม่สามารถย้อนคืนได้ (PDPA Purge)")) return;
 
     try {
-      const response = await fetchWithAuth('/api/audit/events', { method: 'DELETE' });
-      if (response.ok) {
-        showAlert('success', '🗑️ ล้างประวัติ Audit Logs ทั้งหมดสำเร็จ');
-        fetchAuditLogs();
-      } else {
-        const data = await response.json();
-        showAlert('error', `❌ ${data.error || 'ล้มเหลว'}`);
-      }
-    } catch (error) {
-      showAlert('error', '❌ ไม่สามารถติดต่อเซิร์ฟเวอร์เพื่อล้างข้อมูลได้');
+      await api.clearAuditEvents();
+      showAlert('success', '🗑️ ล้างประวัติ Audit Logs ทั้งหมดสำเร็จ');
+      fetchAuditLogs();
+    } catch (error: any) {
+      showAlert('error', `❌ ${error.message}`);
     }
   };
 
@@ -671,54 +637,125 @@ const Dashboard = () => {
               initial="hidden"
               animate="show"
               exit={{ opacity: 0, y: -15 }}
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"
+              className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3 sm:gap-4"
             >
-              {rooms.map((room) => (
-                <motion.div
-                  key={room.id}
-                  variants={itemVariants}
-                  layout
-                  className="glass-panel rounded-2xl p-5 hover:border-hotel-accent/50 hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[200px]"
-                >
-                  <div className="absolute -right-8 -top-8 w-24 h-24 rounded-full blur-3xl opacity-15 bg-hotel-accent" />
-                  
-                  <div className="flex justify-between items-start mb-4">
-                    <div>
-                      <h3 className="text-2xl font-bold text-slate-100 tracking-tight">Room {room.id}</h3>
-                      <div className="flex items-center gap-1.5 mt-1">
-                        <span className={`h-2 w-2 rounded-full ${room.status === 'occupied' ? 'bg-emerald-500' : 'bg-slate-600'}`} />
-                        <span className={`text-xs font-semibold uppercase tracking-wide ${room.status === 'occupied' ? 'text-emerald-400' : 'text-slate-500'}`}>
-                          {room.status === 'occupied' ? 'เช็คอินแล้ว' : 'ห้องว่าง'}
-                        </span>
+              {rooms.map((room) => {
+                // Color coding based on status
+                const isOccupied = room.status === 'occupied';
+                const hasPower = room.power;
+                
+                let cardBgClass = '';
+                let borderColorClass = '';
+                let statusColor = '';
+                
+                if (isOccupied && hasPower) {
+                  // Occupied with power ON - Green/Emerald
+                  cardBgClass = 'bg-emerald-500/10 hover:bg-emerald-500/15';
+                  borderColorClass = 'border-emerald-500/30 hover:border-emerald-500/50';
+                  statusColor = 'text-emerald-400';
+                } else if (isOccupied && !hasPower) {
+                  // Occupied but power OFF - Yellow/Amber warning
+                  cardBgClass = 'bg-amber-500/10 hover:bg-amber-500/15';
+                  borderColorClass = 'border-amber-500/30 hover:border-amber-500/50';
+                  statusColor = 'text-amber-400';
+                } else {
+                  // Vacant - Red/Rose
+                  cardBgClass = 'bg-rose-500/10 hover:bg-rose-500/15';
+                  borderColorClass = 'border-rose-500/30 hover:border-rose-500/50';
+                  statusColor = 'text-rose-400';
+                }
+                
+                return (
+                  <motion.div
+                    key={room.id}
+                    variants={itemVariants}
+                    layout
+                    className={`glass-panel rounded-xl sm:rounded-2xl p-3 sm:p-5 ${borderColorClass} ${cardBgClass} hover:shadow-[0_0_30px_rgba(56,189,248,0.15)] transition-all duration-300 relative overflow-hidden flex flex-col justify-between min-h-[140px] sm:min-h-[180px] group`}
+                  >
+                    {/* Status indicator dot */}
+                    <div className={`absolute top-2 right-2 sm:top-3 sm:right-3 w-2 h-2 sm:w-3 sm:h-3 rounded-full ${isOccupied ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'} shadow-lg`} />
+                    
+                    <div className="flex justify-between items-start mb-2 sm:mb-4">
+                      <div>
+                        <h3 className="text-lg sm:text-2xl font-bold text-slate-100 tracking-tight">
+                          {room.id}
+                        </h3>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          <span className={`h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full ${isOccupied ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                          <span className={`text-[10px] sm:text-xs font-semibold uppercase tracking-wide ${statusColor}`}>
+                            {isOccupied ? 'เข้าพัก' : 'ว่าง'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className={`p-2 sm:p-3 rounded-lg sm:rounded-xl border ${hasPower ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-slate-950/50 text-slate-600 border-slate-900'}`}>
+                        {hasPower ? <Zap size={16} className="sm:w-5 sm:h-5 fill-current" /> : <ZapOff size={16} className="sm:w-5 sm:h-5" />}
                       </div>
                     </div>
 
-                    <div className={`p-3 rounded-xl border ${room.power ? 'bg-amber-500/10 text-amber-400 border-amber-500/20' : 'bg-slate-950 text-slate-600 border-slate-900'}`}>
-                      {room.power ? <Zap size={20} className="fill-current" /> : <ZapOff size={20} />}
-                    </div>
-                  </div>
+                    {/* Guest info (if occupied and staff/owner) */}
+                    {(role === 'front_desk' || role === 'owner') && room.guest_name && (
+                      <div className="mb-2 sm:mb-3">
+                        <p className="text-[10px] sm:text-xs text-slate-500 truncate">
+                          {room.guest_name}
+                        </p>
+                        {room.checkout_date && (
+                          <p className="text-[9px] sm:text-[10px] text-slate-600">
+                            Checkout: {new Date(room.checkout_date).toLocaleDateString('th-TH')}
+                          </p>
+                        )}
+                      </div>
+                    )}
 
-                  <div className="grid grid-cols-2 gap-2 mt-auto pt-4 border-t border-slate-900/60">
-                    <div>
-                      <span className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">การจ่ายไฟ</span>
-                      <p className={`text-sm font-semibold mt-0.5 ${room.power ? 'text-amber-400' : 'text-slate-500'}`}>
-                        {room.power ? 'ON (เสียบการ์ด)' : 'OFF'}
-                      </p>
-                    </div>
+                    <div className="grid grid-cols-2 gap-2 mt-auto pt-2 sm:pt-4 border-t border-slate-900/60">
+                      <div>
+                        <span className="text-[9px] sm:text-[10px] text-slate-500 uppercase font-bold tracking-wider">ไฟฟ้า</span>
+                        <p className={`text-xs sm:text-sm font-semibold mt-0.5 ${hasPower ? 'text-amber-400' : 'text-slate-500'}`}>
+                          {hasPower ? 'ON' : 'OFF'}
+                        </p>
+                      </div>
 
-                    <div className="flex justify-end items-end">
-                      {room.status === 'occupied' && (
-                        <button
-                          onClick={() => handleCheckout(room.id)}
-                          className="flex items-center gap-1 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs px-3 py-2 rounded-lg transition-colors border border-rose-500/20 font-medium"
-                        >
-                          <LogOut size={12} /> เช็คเอาท์
-                        </button>
-                      )}
+                      <div className="flex justify-end items-end gap-1">
+                        {/* Admin controls for owner/front_desk */}
+                        {(role === 'owner' || role === 'front_desk') && (
+                          <>
+                            {isOccupied && (
+                              <button
+                                onClick={() => handleCheckout(room.id)}
+                                className="flex items-center justify-center bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors border border-rose-500/20 font-medium"
+                                title="เช็คเอาท์"
+                              >
+                                <LogOut size={12} className="sm:hidden" />
+                                <LogOut size={14} className="hidden sm:block" />
+                              </button>
+                            )}
+                            
+                            {/* Power toggle for owner */}
+                            {role === 'owner' && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await api.forceControl(String(room.id), hasPower ? 'OFF' : 'ON', 'dashboard_admin');
+                                    showAlert('success', `✅ สั่ง${hasPower ? 'ปิด' : 'เปิด'}ไฟห้อง ${room.id} สำเร็จ`);
+                                    fetchRooms();
+                                  } catch (error: any) {
+                                    showAlert('error', error.message);
+                                  }
+                                }}
+                                className={`flex items-center justify-center ${hasPower ? 'bg-slate-700/30 hover:bg-slate-700/50 text-slate-400' : 'bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400'} text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors border border-white/10 font-medium`}
+                                title={hasPower ? 'ปิดไฟ' : 'เปิดไฟ'}
+                              >
+                                <Power size={12} className="sm:hidden" />
+                                <Power size={14} className="hidden sm:block" />
+                              </button>
+                            )}
+                          </>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </motion.div>
-              ))}
+                  </motion.div>
+                );
+              })}
             </motion.div>
           )}
 

@@ -1,31 +1,21 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { 
-  LayoutDashboard, 
-  QrCode, 
-  Wifi, 
-  Bot, 
-  MonitorPlay, 
-  Printer, 
-  BookOpen 
-} from 'lucide-react';
+import { LayoutDashboard, QrCode, Printer, MonitorPlay } from 'lucide-react';
+import RoleSwitcher from './RoleSwitcher';
 
-const Layout = () => {
+const StaffLayout = () => {
   const location = useLocation();
+  const basePath = '/staff';
 
   const navItems = [
-    { path: '/', label: 'Home', icon: MonitorPlay },
-    { path: '/dashboard', label: 'Console', icon: LayoutDashboard },
-    { path: '/scan', label: 'Check-in', icon: QrCode },
-    { path: '/qr-generator', label: 'QR Gen', icon: Printer },
-    { path: '/manual', label: 'Manual', icon: BookOpen },
-    { path: '/wifi', label: 'Wi-Fi', icon: Wifi },
-    { path: '/copilot', label: 'Copilot', icon: Bot },
+    { path: `${basePath}`, label: 'Home', icon: MonitorPlay },
+    { path: `${basePath}/dashboard`, label: 'Console', icon: LayoutDashboard },
+    { path: `${basePath}/scan`, label: 'Check-in', icon: QrCode },
+    { path: `${basePath}/qr-generator`, label: 'QR Gen', icon: Printer },
   ];
 
   return (
     <div className="min-h-screen flex flex-col relative overflow-hidden bg-hotel-dark">
-      {/* Background glow effect */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-64 bg-hotel-accent/10 blur-[100px] rounded-full pointer-events-none" />
 
       <header className="sticky top-0 z-50 border-b border-slate-800 bg-hotel-dark/80 backdrop-blur-md">
@@ -35,14 +25,14 @@ const Layout = () => {
               <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-hotel-accent to-amber-600 flex items-center justify-center shadow-lg shadow-hotel-accent/10">
                 <span className="font-bold text-slate-950 text-lg">H</span>
               </div>
-              <span className="font-semibold text-lg tracking-tight">Smart Hotel</span>
+              <span className="font-semibold text-lg tracking-tight">Staff Portal</span>
             </div>
 
             {/* Desktop Navigation */}
-            <nav className="hidden md:flex items-center gap-1 lg:gap-2">
+            <nav className="hidden md:flex items-center gap-1 lg:gap-2 mr-auto ml-8">
               {navItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = location.pathname === item.path;
+                const isActive = location.pathname === item.path || (item.path !== basePath && location.pathname.startsWith(item.path));
                 return (
                   <Link
                     key={item.path}
@@ -53,7 +43,7 @@ const Layout = () => {
                   >
                     {isActive && (
                       <motion.div
-                        layoutId="nav-pill"
+                        layoutId="nav-pill-staff"
                         className="absolute inset-0 bg-slate-800 rounded-md -z-10"
                         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
                       />
@@ -64,11 +54,14 @@ const Layout = () => {
                 );
               })}
             </nav>
+            
+            <div className="flex items-center gap-4">
+              <RoleSwitcher />
+            </div>
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
       <main className="flex-1 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 md:pb-8 relative z-10">
         <motion.div
           key={location.pathname}
@@ -86,7 +79,7 @@ const Layout = () => {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-lg h-16 flex items-center justify-around px-2 pb-safe shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = location.pathname === item.path;
+          const isActive = location.pathname === item.path || (item.path !== basePath && location.pathname.startsWith(item.path));
           return (
             <Link
               key={item.path}
@@ -109,4 +102,4 @@ const Layout = () => {
   );
 };
 
-export default Layout;
+export default StaffLayout;
