@@ -8,7 +8,6 @@ import {
   CheckCircle, 
   XCircle, 
   AlertTriangle,
-  Shield,
   Loader2,
   ArrowRight
 } from 'lucide-react';
@@ -87,7 +86,7 @@ const CheckIn: React.FC = () => {
   // Stop QR scanning
   const stopScanning = () => {
     if (codeReader.current) {
-      codeReader.current.reset();
+      (codeReader.current as any).reset?.();
     }
     setScanning(false);
   };
@@ -141,7 +140,7 @@ const CheckIn: React.FC = () => {
     setError('');
 
     try {
-      const response = await api.checkIn({
+      await api.checkIn({
         roomNumber: checkInData.roomNumber,
         guestName: checkInData.guestName,
         guestEmail: checkInData.guestEmail,

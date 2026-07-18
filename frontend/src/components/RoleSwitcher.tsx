@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Shield, Users, UserCircle } from 'lucide-react';
-import { useAuth, UserRole } from '../context/AuthContext';
+import { useAuth, type UserRole } from '../context/AuthContext';
 
 export default function RoleSwitcher() {
   const { role, setRole } = useAuth();

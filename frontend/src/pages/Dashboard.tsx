@@ -15,11 +15,7 @@ import {
   Lock,
   Video,
   Code,
-  Wifi,
-  WifiOff,
-  Power,
-  Unlock,
-  RefreshCw
+  Power
 } from 'lucide-react';
 import TerminalStatus from '../components/TerminalStatus';
 import { api, auth } from '../lib/api';
@@ -28,6 +24,8 @@ interface Room {
   id: number;
   status: 'occupied' | 'vacant';
   power: boolean;
+  guest_name?: string;
+  checkout_date?: string;
 }
 
 interface PendingApproval {
@@ -111,8 +109,7 @@ const Dashboard = () => {
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
 
-  // WebSocket/EventSource connection for real-time updates
-  const [eventSource, setEventSource] = useState<EventSource | null>(null);
+
 
   const handleKeypadPress = (val: string) => {
     if (pin.length >= 4) return;
@@ -252,8 +249,6 @@ const Dashboard = () => {
       console.error('[SSE] Connection error:', error);
       es.close();
     };
-
-    setEventSource(es);
 
     return () => {
       es.close();

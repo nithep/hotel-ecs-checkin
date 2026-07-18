@@ -273,3 +273,13 @@
 - **สถานะ:** เสร็จสิ้น (Verified & Documented)
 
 
+
+
+### การบูรณาการ LINE LIFF และการปรับแต่งพรีเมียมส่วน Frontend (LINE LIFF & Premium Frontend Integration)
+- **วันที่:** 2026-07-19
+- **รายละเอียด:**
+  - 📱 **LINE LIFF Integration:** ติดตั้งและเชื่อมต่อระบบเช็คอินและสร้าง QR Code ผ่าน LINE LIFF สำเร็จ ช่วยให้แขกสามารถทำรายการได้อย่างแนบเนียนจากแอปพลิเคชัน LINE โดยไม่ต้องติดตั้งแอปเพิ่มเติม
+  - 🎨 **Frontend Premium Finalization:** ปรับแต่งหน้า Dashboard และระบบ UI ด้วย Glassmorphism, Dark Theme, Micro-animations ให้มีความพรีเมียมสูงสุด และเชื่อมต่อกับระบบ Backend อย่างสมบูรณ์
+  - 🛡️ **Network Guidelines:** เพิ่มมาตรฐานการกำหนดสิทธิ์เครือข่ายและการแก้ไขปัญหาขัดข้อง (Troubleshooting) ในเอกสารคู่มือของระบบ
+  - 🛠️ **Dev Environment Recovery:** ตรวจพบและแก้ไขปัญหาหลังจาก Server Restart (ตัวแปร node-cron ขัดข้อง, ไฟล์ pdpa_service.js สูญหาย, และ Runtime Error ของกล้องใน CheckIn.tsx) ดำเนินการฟื้นฟูระบบและทดสอบ E2E จนกลับมาทำงาน 100%
+- **สถานะ:** เสร็จสิ้น (Verified)

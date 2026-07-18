@@ -199,7 +199,8 @@ initPdpaConsentTable(db.db).catch(err => {
 });
 
 // Schedule daily cleanup of old consent records (keep for 1 year)
-cronScheduler.scheduleJob('0 2 * * *', async () => {
+const cron = require('node-cron');
+cron.schedule('0 2 * * *', async () => {
     try {
         await cleanupOldConsents(db.db, 365);
     } catch (err) {
