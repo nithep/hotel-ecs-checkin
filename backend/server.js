@@ -2,18 +2,19 @@
  * Hotel ECS Backend Server
  * Smart Hotel Self Check-in/Check-out System
  * 
- * Main Express.js application setup with JWT middleware,
- * CORS, error handling, and core API routes.
+ * Complete Express.js application with authentication middleware,
+ * SQLite database, and all core API routes.
  */
 
 const express = require('express');
 const cors = require('cors');
-const jwt = require('jsonwebtoken');
-const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 require('dotenv').config();
+
+// Import authentication middleware
+const auth = require('./middleware/auth');
 
 const app = express();
 
@@ -23,11 +24,7 @@ const app = express();
 
 const PORT = process.env.PORT || 3001;
 const NODE_ENV = process.env.NODE_ENV || 'development';
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-change-in-production';
-const JWT_EXPIRY = process.env.JWT_EXPIRY || '15m';
 const CORS_ORIGIN = process.env.CORS_ORIGIN || 'http://localhost:3000';
-
-// Database setup
 const DB_PATH = process.env.DB_PATH || path.join(__dirname, '../data/hotel_ecs.db');
 const DATA_DIR = path.dirname(DB_PATH);
 
@@ -40,6 +37,7 @@ if (!fs.existsSync(DATA_DIR)) {
 // DATABASE INITIALIZATION
 // ============================================================================
 
+const sqlite3 = require('sqlite3').verbose();
 const db = new sqlite3.Database(DB_PATH, (err) => {
   if (err) {
     console.error('❌ Database connection error:', err);
@@ -48,6 +46,8 @@ const db = new sqlite3.Database(DB_PATH, (err) => {
     initializeDatabase();
   }
 });
+
+app.set('db', db);
 
 /**
  * Initialize database tables
@@ -149,6 +149,28 @@ function initializeDatabase() {
     `);
 
     console.log('✅ Database tables initialized');
+
+    // Insert default admin user (if not exists)
+    db.run(
+      `INSERT OR IGNORE INTO users (id, email, password_hash, role) VALUES (?, ?, ?, ?)`,
+      [1, 'admin@hotel.com', 'admin123', 'admin'],
+      (err) => {
+        if (!err) console.log('✅ Default admin user ensured');
+      }
+    );
+
+    // Insert sample rooms
+    for (let i = 1; i <= 10; i++) {
+      const roomId = `${i.toString().padStart(3, '0')}`;
+      const floor = Math.ceil(i / 5);
+      db.run(
+        `INSERT OR IGNORE INTO rooms (id, room_number, floor, status) VALUES (?, ?, ?, ?)`,
+        [roomId, roomId, floor, 'vacant'],
+        (err) => {
+          if (!err && i === 10) console.log('✅ Sample rooms initialized');
+        }
+      );
+    }
   });
 }
 
@@ -171,171 +193,25 @@ app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ limit: '10mb', extended: true }));
 
+// Request context middleware
+app.use(auth.attachRequestContext);
+
+// Global rate limiting (10 req/min per IP)
+app.use(auth.rateLimitByIP);
+
+// User rate limiting (100 req/min per authenticated user)
+app.use(auth.rateLimitByUser);
+
 // Request logging middleware
 app.use((req, res, next) => {
   const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] ${req.method} ${req.path} - IP: ${req.ip}`);
+  console.log(`[${timestamp}] ${req.method} ${req.path} - IP: ${req.ip} - RequestID: ${req.requestId}`);
   next();
 });
 
 // ============================================================================
-// AUTHENTICATION MIDDLEWARE
-// ============================================================================
-
-/**
- * JWT verification middleware
- */
-function verifyJWT(req, res, next) {
-  const token = req.headers.authorization?.split(' ')[1];
-
-  if (!token) {
-    return res.status(401).json({
-      success: false,
-      error: 'Unauthorized: No token provided',
-      code: 'NO_TOKEN'
-    });
-  }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    next();
-  } catch (err) {
-    if (err.name === 'TokenExpiredError') {
-      return res.status(401).json({
-        success: false,
-        error: 'Token expired',
-        code: 'TOKEN_EXPIRED'
-      });
-    }
-    return res.status(403).json({
-      success: false,
-      error: 'Invalid token',
-      code: 'INVALID_TOKEN'
-    });
-  }
-}
-
-/**
- * Role-based access control middleware
- */
-function requireRole(...allowedRoles) {
-  return (req, res, next) => {
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Unauthorized: No user',
-        code: 'NO_USER'
-      });
-    }
-
-    if (!allowedRoles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        error: `Forbidden: Required role(s): ${allowedRoles.join(', ')}`,
-        code: 'INSUFFICIENT_ROLE'
-      });
-    }
-
-    next();
-  };
-}
-
-/**
- * PDPA Consent verification middleware
- */
-function verifyPDPAConsent(req, res, next) {
-  // Check if guest has given PDPA consent
-  if (req.body.pdpa_consent === false) {
-    return res.status(403).json({
-      success: false,
-      error: 'PDPA consent is required to proceed',
-      code: 'NO_PDPA_CONSENT',
-      details: {
-        message: 'คุณต้องยอมรับนโยบายความเป็นส่วนตัว (PDPA) เพื่อติดตั้งเข้าห้องพัก',
-        consent_url: '/api/privacy-policy'
-      }
-    });
-  }
-  next();
-}
-
-// ============================================================================
-// ERROR HANDLING MIDDLEWARE
-// ============================================================================
-
-/**
- * Centralized error handler
- */
-function errorHandler(err, req, res, next) {
-  const timestamp = new Date().toISOString();
-  const requestId = req.id || crypto.randomUUID();
-
-  console.error(`[${timestamp}] ERROR [${requestId}]:`, {
-    message: err.message,
-    stack: NODE_ENV === 'development' ? err.stack : undefined,
-    path: req.path,
-    method: req.method
-  });
-
-  // Database errors
-  if (err.code === 'SQLITE_CONSTRAINT') {
-    return res.status(409).json({
-      success: false,
-      error: 'Conflict: Resource already exists',
-      code: 'CONSTRAINT_VIOLATION',
-      requestId
-    });
-  }
-
-  // Validation errors
-  if (err.name === 'ValidationError') {
-    return res.status(400).json({
-      success: false,
-      error: err.message,
-      code: 'VALIDATION_ERROR',
-      details: err.details,
-      requestId
-    });
-  }
-
-  // JWT errors handled in middleware, but catch-all here
-  if (err.name === 'JsonWebTokenError') {
-    return res.status(403).json({
-      success: false,
-      error: 'Invalid token',
-      code: 'JWT_ERROR',
-      requestId
-    });
-  }
-
-  // Default error
-  res.status(err.status || 500).json({
-    success: false,
-    error: err.message || 'Internal server error',
-    code: err.code || 'INTERNAL_ERROR',
-    requestId: NODE_ENV === 'development' ? requestId : undefined
-  });
-}
-
-// ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-/**
- * Generate JWT token
- */
-function generateToken(user) {
-  return jwt.sign(
-    {
-      id: user.id,
-      email: user.email,
-      role: user.role
-    },
-    JWT_SECRET,
-    { expiresIn: JWT_EXPIRY }
-  );
-}
 
 /**
  * Encrypt data (AES-256-CBC)
@@ -352,12 +228,17 @@ function encryptData(plaintext, key = process.env.ENCRYPTION_KEY || 'default-key
  * Decrypt data
  */
 function decryptData(ciphertext, key = process.env.ENCRYPTION_KEY || 'default-key-32-char-minimum!!!') {
-  const [ivHex, encrypted] = ciphertext.split(':');
-  const iv = Buffer.from(ivHex, 'hex');
-  const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key.padEnd(32, '0').slice(0, 32)), iv);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf-8');
-  decrypted += decipher.final('utf-8');
-  return decrypted;
+  try {
+    const [ivHex, encrypted] = ciphertext.split(':');
+    const iv = Buffer.from(ivHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-cbc', Buffer.from(key.padEnd(32, '0').slice(0, 32)), iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf-8');
+    decrypted += decipher.final('utf-8');
+    return decrypted;
+  } catch (err) {
+    console.error('Decryption error:', err);
+    return null;
+  }
 }
 
 /**
@@ -409,7 +290,8 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     environment: NODE_ENV,
     uptime: process.uptime(),
-    database: 'connected'
+    database: 'connected',
+    version: '1.0.0'
   });
 });
 
@@ -418,10 +300,11 @@ app.get('/api/health', (req, res) => {
  */
 
 // POST /api/auth/login - User login
-app.post('/api/auth/login', (req, res, next) => {
+app.post('/api/auth/login', auth.rateLimitAuth, (req, res, next) => {
   const { email, password } = req.body;
 
   if (!email || !password) {
+    logAudit(null, 'login_attempt', 'auth', email, { result: 'missing_credentials' }, req.ip, 'failure');
     return res.status(400).json({
       success: false,
       error: 'Email and password required',
@@ -456,21 +339,38 @@ app.post('/api/auth/login', (req, res, next) => {
         });
       }
 
-      const token = generateToken(user);
+      const tokens = auth.generateTokenPair(user);
       logAudit(user.id, 'login', 'auth', user.email, { role: user.role }, req.ip);
 
       res.json({
         success: true,
-        token,
+        message: 'Login successful',
+        accessToken: tokens.accessToken,
+        refreshToken: tokens.refreshToken,
         user: {
           id: user.id,
           email: user.email,
           role: user.role
         },
-        expiresIn: JWT_EXPIRY
+        expiresIn: tokens.expiresIn
       });
     }
   );
+});
+
+// POST /api/auth/refresh - Refresh access token
+app.post('/api/auth/refresh', auth.refreshTokenHandler(db));
+
+// POST /api/auth/logout - Logout (for cleanup on client)
+app.post('/api/auth/logout', auth.optionalJWT, (req, res) => {
+  if (req.user) {
+    logAudit(req.user.id, 'logout', 'auth', req.user.email, {}, req.ip);
+  }
+
+  res.json({
+    success: true,
+    message: 'Logged out successfully'
+  });
 });
 
 /**
@@ -478,7 +378,7 @@ app.post('/api/auth/login', (req, res, next) => {
  */
 
 // POST /api/checkin - Guest check-in via QR code
-app.post('/api/checkin', verifyPDPAConsent, (req, res, next) => {
+app.post('/api/checkin', auth.verifyPDPAConsent, (req, res, next) => {
   const { guest_name, room_id, qr_code, pdpa_consent } = req.body;
 
   if (!guest_name || !room_id || !qr_code) {
@@ -510,9 +410,9 @@ app.post('/api/checkin', verifyPDPAConsent, (req, res, next) => {
 
         // Update room status
         db.run(
-          `UPDATE rooms SET status = 'occupied', last_guest_id = ?, last_check_in = ?
+          `UPDATE rooms SET status = 'occupied', last_guest_id = ?, last_check_in = ?, updated_at = ?
            WHERE id = ?`,
-          [guestId, checkInTime, room_id],
+          [guestId, checkInTime, new Date().toISOString(), room_id],
           (err) => {
             if (err) {
               db.run('ROLLBACK');
@@ -521,9 +421,9 @@ app.post('/api/checkin', verifyPDPAConsent, (req, res, next) => {
 
             // Insert check-in history
             db.run(
-              `INSERT INTO checkin_history (guest_id, room_id, check_in_time, qr_scanned_at)
-               VALUES (?, ?, ?, ?)`,
-              [guestId, room_id, checkInTime, new Date().toISOString()],
+              `INSERT INTO checkin_history (guest_id, room_id, check_in_time, qr_scanned_at, door_unlocked_at)
+               VALUES (?, ?, ?, ?, ?)`,
+              [guestId, room_id, checkInTime, new Date().toISOString(), new Date().toISOString()],
               (err) => {
                 if (err) {
                   db.run('ROLLBACK');
@@ -587,9 +487,9 @@ app.post('/api/checkout', (req, res, next) => {
 
     // Update guest record
     db.run(
-      `UPDATE guests SET check_out_time = ?, is_checked_out = 1
+      `UPDATE guests SET check_out_time = ?, is_checked_out = 1, updated_at = ?
        WHERE id = ? AND room_id = ?`,
-      [checkOutTime, guest_id, room_id],
+      [checkOutTime, new Date().toISOString(), guest_id, room_id],
       (err) => {
         if (err) {
           db.run('ROLLBACK');
@@ -598,9 +498,9 @@ app.post('/api/checkout', (req, res, next) => {
 
         // Update room status to vacant
         db.run(
-          `UPDATE rooms SET status = 'vacant', last_check_out = ?
+          `UPDATE rooms SET status = 'vacant', last_check_out = ?, updated_at = ?
            WHERE id = ?`,
-          [checkOutTime, room_id],
+          [checkOutTime, new Date().toISOString(), room_id],
           (err) => {
             if (err) {
               db.run('ROLLBACK');
@@ -629,7 +529,7 @@ app.post('/api/checkout', (req, res, next) => {
                   res.status(200).json({
                     success: true,
                     message: 'Check-out successful',
-                    message_th: 'ติดตั้งออกจากห้องสำเร็จ',
+                    message_th: 'ติดตั้งออกจ���กห้องสำเร็จ',
                     guest_id,
                     room_id,
                     check_out_time: checkOutTime
@@ -684,8 +584,24 @@ app.get('/api/room/status/:room_id', (req, res, next) => {
   );
 });
 
-// PUT /api/room/unlock/:room_id - Unlock room (Admin only)
-app.put('/api/room/unlock/:room_id', verifyJWT, requireRole('admin', 'staff'), (req, res, next) => {
+// GET /api/rooms - Get all rooms
+app.get('/api/rooms', (req, res, next) => {
+  db.all(
+    `SELECT id, room_number, floor, status, updated_at FROM rooms ORDER BY room_number ASC`,
+    (err, rooms) => {
+      if (err) return next(err);
+
+      res.json({
+        success: true,
+        rooms: rooms,
+        total: rooms.length
+      });
+    }
+  );
+});
+
+// PUT /api/room/unlock/:room_id - Unlock room (Admin/Staff only)
+app.put('/api/room/unlock/:room_id', auth.verifyJWT, auth.requireStaff, (req, res, next) => {
   const { room_id } = req.params;
 
   db.run(
@@ -707,7 +623,8 @@ app.put('/api/room/unlock/:room_id', verifyJWT, requireRole('admin', 'staff'), (
 
       res.json({
         success: true,
-        message: 'Room unlocked',
+        message: 'Room unlocked successfully',
+        message_th: 'ปลดล็อกห้องสำเร็จ',
         room_id,
         status: 'locked_open'
       });
@@ -715,8 +632,8 @@ app.put('/api/room/unlock/:room_id', verifyJWT, requireRole('admin', 'staff'), (
   );
 });
 
-// PUT /api/room/lock/:room_id - Lock room (Admin only)
-app.put('/api/room/lock/:room_id', verifyJWT, requireRole('admin', 'staff'), (req, res, next) => {
+// PUT /api/room/lock/:room_id - Lock room (Admin/Staff only)
+app.put('/api/room/lock/:room_id', auth.verifyJWT, auth.requireStaff, (req, res, next) => {
   const { room_id } = req.params;
 
   db.run(
@@ -738,7 +655,8 @@ app.put('/api/room/lock/:room_id', verifyJWT, requireRole('admin', 'staff'), (re
 
       res.json({
         success: true,
-        message: 'Room locked',
+        message: 'Room locked successfully',
+        message_th: 'ล็อกห้องสำเร็จ',
         room_id,
         status: 'vacant'
       });
@@ -783,7 +701,7 @@ app.get('/api/privacy-policy', (req, res) => {
  */
 
 // GET /api/admin/audit-logs - Get audit logs (Admin only)
-app.get('/api/admin/audit-logs', verifyJWT, requireRole('admin'), (req, res, next) => {
+app.get('/api/admin/audit-logs', auth.verifyJWT, auth.requireAdmin, (req, res, next) => {
   const { limit = 50, offset = 0 } = req.query;
 
   db.all(
@@ -797,7 +715,46 @@ app.get('/api/admin/audit-logs', verifyJWT, requireRole('admin'), (req, res, nex
         success: true,
         audit_logs: logs,
         limit: parseInt(limit),
-        offset: parseInt(offset)
+        offset: parseInt(offset),
+        total: logs.length
+      });
+    }
+  );
+});
+
+// GET /api/admin/users - Get all users (Admin only)
+app.get('/api/admin/users', auth.verifyJWT, auth.requireAdmin, (req, res, next) => {
+  db.all(
+    `SELECT id, email, role, created_at, updated_at FROM users ORDER BY created_at DESC`,
+    (err, users) => {
+      if (err) return next(err);
+
+      res.json({
+        success: true,
+        users: users,
+        total: users.length
+      });
+    }
+  );
+});
+
+// GET /api/admin/check-in-history - Get check-in history (Admin only)
+app.get('/api/admin/check-in-history', auth.verifyJWT, auth.requireAdmin, (req, res, next) => {
+  const { limit = 100, offset = 0 } = req.query;
+
+  db.all(
+    `SELECT id, guest_id, room_id, check_in_time, check_out_time, status, created_at
+     FROM checkin_history ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+    [parseInt(limit), parseInt(offset)],
+    (err, history) => {
+      if (err) return next(err);
+
+      res.json({
+        success: true,
+        check_in_history: history,
+        limit: parseInt(limit),
+        offset: parseInt(offset),
+        total: history.length
       });
     }
   );
@@ -819,33 +776,78 @@ app.use((req, res) => {
 /**
  * Error Handler Middleware (must be last)
  */
-app.use(errorHandler);
+app.use((err, req, res, next) => {
+  const timestamp = new Date().toISOString();
+  const requestId = req.requestId || crypto.randomUUID();
+
+  console.error(`[${timestamp}] ERROR [${requestId}]:`, {
+    message: err.message,
+    stack: NODE_ENV === 'development' ? err.stack : undefined,
+    path: req.path,
+    method: req.method
+  });
+
+  // Database errors
+  if (err.code === 'SQLITE_CONSTRAINT') {
+    return res.status(409).json({
+      success: false,
+      error: 'Conflict: Resource already exists',
+      code: 'CONSTRAINT_VIOLATION',
+      requestId
+    });
+  }
+
+  // Default error
+  res.status(err.status || 500).json({
+    success: false,
+    error: err.message || 'Internal server error',
+    code: err.code || 'INTERNAL_ERROR',
+    requestId: NODE_ENV === 'development' ? requestId : undefined
+  });
+});
 
 // ============================================================================
 // SERVER STARTUP
 // ============================================================================
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log('');
-  console.log('╔════════════════════════════════════════════════════════╗');
-  console.log('║         Hotel ECS Backend Server Started ✅             ║');
-  console.log('╠════════════════════════════════════════════════════════╣');
-  console.log(`║ Server: http://localhost:${PORT}${' '.repeat(37 - PORT.toString().length)}║`);
-  console.log(`║ Environment: ${NODE_ENV}${' '.repeat(45 - NODE_ENV.length)}║`);
-  console.log(`║ Database: ${DB_PATH.substring(DB_PATH.length - 30)}${' '.repeat(24 - (DB_PATH.substring(DB_PATH.length - 30).length))}║`);
-  console.log(`║ CORS Origin: ${CORS_ORIGIN}${' '.repeat(41 - CORS_ORIGIN.length)}║`);
-  console.log('║                                                        ║');
-  console.log('║ Available Endpoints:                                   ║');
-  console.log('║ • GET  /api/health          - Health check             ║');
-  console.log('║ • POST /api/auth/login      - User login               ║');
-  console.log('║ • POST /api/checkin         - Guest check-in           ║');
-  console.log('║ • POST /api/checkout        - Guest check-out          ║');
-  console.log('║ • GET  /api/room/status/:id - Room status              ║');
-  console.log('║ • PUT  /api/room/unlock/:id - Unlock room (admin)      ║');
-  console.log('║ • PUT  /api/room/lock/:id   - Lock room (admin)        ║');
-  console.log('║ • GET  /api/privacy-policy  - Privacy policy           ║');
-  console.log('║ • GET  /api/admin/audit-logs- Audit logs (admin)       ║');
-  console.log('╚════════════════════════════════════════════════════════╝');
+  console.log('╔════════════════════════════════════════════════════════════╗');
+  console.log('║       Hotel ECS Backend Server Started Successfully ✅      ║');
+  console.log('╠════════════════════════════════════════════════════════════╣');
+  console.log(`║ 🌐 Server: http://localhost:${PORT}${' '.repeat(35 - PORT.toString().length)}║`);
+  console.log(`║ 🔧 Environment: ${NODE_ENV}${' '.repeat(44 - NODE_ENV.length)}║`);
+  console.log(`║ 💾 Database: ${DB_PATH.substring(DB_PATH.length - 35)}${' '.repeat(17 - (DB_PATH.substring(DB_PATH.length - 35).length))}║`);
+  console.log(`║ 🔐 CORS Origin: ${CORS_ORIGIN}${' '.repeat(39 - CORS_ORIGIN.length)}║`);
+  console.log('║                                                            ║');
+  console.log('║ 📡 Available Endpoints:                                    ║');
+  console.log('║   Health & Auth:                                           ║');
+  console.log('║   • GET  /api/health               - Health check          ║');
+  console.log('║   • POST /api/auth/login           - User login            ║');
+  console.log('║   • POST /api/auth/refresh         - Refresh token         ║');
+  console.log('║   • POST /api/auth/logout          - Logout                ║');
+  console.log('║                                                            ║');
+  console.log('║   Guest Operations:                                        ║');
+  console.log('║   ��� POST /api/checkin              - Check-in with QR      ║');
+  console.log('║   • POST /api/checkout             - Check-out             ║');
+  console.log('║   • GET  /api/privacy-policy       - Privacy policy        ║');
+  console.log('║                                                            ║');
+  console.log('║   Room Management (Staff+):                                ║');
+  console.log('║   • GET  /api/rooms                - List all rooms        ║');
+  console.log('║   • GET  /api/room/status/:id      - Room status           ║');
+  console.log('║   • PUT  /api/room/unlock/:id      - Unlock room           ║');
+  console.log('║   • PUT  /api/room/lock/:id        - Lock room             ║');
+  console.log('║                                                            ║');
+  console.log('║   Admin Only:                                              ║');
+  console.log('║   • GET  /api/admin/audit-logs     - Audit history         ║');
+  console.log('║   • GET  /api/admin/users          - User list             ║');
+  console.log('║   • GET  /api/admin/check-in-history - Check-in history    ║');
+  console.log('║                                                            ║');
+  console.log('║ 🔑 Default Credentials:                                    ║');
+  console.log('║   Email: admin@hotel.com                                   ║');
+  console.log('║   Password: admin123                                       ║');
+  console.log('║                                                            ║');
+  console.log('╚════════════════════════════════════════════════════════════╝');
   console.log('');
 });
 
