@@ -65,8 +65,10 @@ timestamp: "2026-06-28T02:00:00+07:00"
 - [[wiki/technician_pbx_manual|technician_pbx_manual]]
 - [[wiki/wifi-only-guide|wifi-only-guide]]
 - [[wiki/cloudflare_warp_ncsi_issue|การแก้ไขปัญหา Windows NCSI กับ Cloudflare WARP]]
+- [[wiki/dashboard_network_setup|SOP มาตรฐานการตั้งค่าเครือข่ายและระบบป้องกันปัญหาการชนกันบนเครื่อง Dashboard]]
 - [[wiki/system_monitoring_guide|คู่มือระบบติดตามและรายงานสถานะ Hotel ECS]]
 - [[wiki/core_services_architecture|สถาปัตยกรรมบริการหลักและการแก้ไขปัญหาเชิงลึก (24/7 Core Services)]]
+
 
 ---
 *บันทึกโดย: Librarian Agent (Antigravity)*

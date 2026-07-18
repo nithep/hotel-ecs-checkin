@@ -257,3 +257,19 @@
   - 🧪 **Build Verification:** ตรวจสอบระบบโดยรันคำสั่ง `npm run build` ผ่านการคอมไพล์ TypeScript (`tsc -b`) และ Bundler ของ Vite สำเร็จลุล่วง 100% และสร้างไฟล์ Service Worker (`sw.js`) เรียบร้อยพร้อมใช้งานในระบบจริง
 - **สถานะ:** เสร็จสิ้น (Verified)
 
+### การซ่อมบำรุงเครือข่ายแดชบอร์ด (Network Stabilization & VPN Diagnostics) - Cloudflare WARP & WireGuard Conflict
+- **วันที่:** 2026-07-18
+- **รายละเอียด:**
+  - 🚨 **Incident (Network Interruption):** ตรวจพบอาการ Wi-Fi บนเครื่องคอมพิวเตอร์ Dashboard (เครื่องแอดมิน Windows) หลุดการเชื่อมต่อและต่อใหม่บ่อยครั้ง (Disconnect/Reconnect Loop) รบกวนการเปิดหน้าแดชบอร์ด `hotel.nithep.com` และพบว่าไอคอน **WireGuard Client** ใน System Tray หายไป
+  - 🔍 **Root Cause Analysis:**
+    1. **DNS & Routing Conflict:** Cloudflare One Client (WARP) บังคับสลับ DNS เป็น Loopback IP (`127.0.2.2`) เพื่อส่งทราฟฟิกออกภายนอก ขณะที่ WireGuard VPN พยายามแก้ไข Route เครือข่ายย่อยภายใน เมื่อรันพร้อมกันโดยไม่มีการทำ Exclusion จะทำให้ระบบ DNS/Routing ชนกัน
+    2. **Windows NCSI Failure:** Windows ตรวจสอบอินเทอร์เน็ตผ่าน NCSI ล้มเหลวและสั่ง Reset Network Adapter (Wi-Fi) เสมือนสัญญาณขาดหาย
+    3. **WireGuard UI Exit:** ตัว WireGuard GUI หายไปจาก System Tray เนื่องจากปิดโปรแกรมหรือกระบวนการทำงานมีปัญหา แต่บริการเบื้องหลังยังรันอยู่ ทำให้เกิดอาการสับสนในการจัดแจง Metric
+  - 🛠️ **Resolution Steps:**
+    1. **NCSI Patch:** ใช้ Registry Policy `UseGlobalDNS = 1` เพื่อบังคับให้ Windows ตรวจสอบเน็ตผ่านเส้นทาง Global DNS (WARP Tunnel)
+    2. **Split Tunneling Exclusion:** แนะนำตั้งค่า Exclude IP วง VPN ของโรงงาน/โรงแรม (`10.0.0.0/8`, `10.0.0.0/24`) และพอร์ต UDP `51820` ในแผงควบคุม Cloudflare Zero Trust (WARP Client Settings) เพื่อหลีกเลี่ยงการชนกันของท่อ VPN
+    3. **Restore GUI & Metric:** เรียกเปิดแอป WireGuard GUI ใหม่เพื่อดึงไอคอนมังกรใน System Tray กลับมา และปรับระดับความสำคัญ (Interface Metric) ให้ Wi-Fi เป็น 10 และ VPN เป็น 50 ส่งผลให้สถานะ WireGuard เชื่อมต่อเป็น Active สีเขียวเรียบร้อย 100%
+    4. **SOP Standard:** จัดทำคู่มือ SOP มาตรฐาน [dashboard_network_setup.md](file:///c:/Users/Nithep/ไดรฟ์ของฉัน%20(cnithep@gmail.com)/Hotel-ECS/docs/wiki/dashboard_network_setup.md) สำหรับใช้ป้องกันปัญหาเครือข่ายเมื่อเริ่มติดตั้งเครื่องแดชบอร์ดใหม่ในอนาคต
+- **สถานะ:** เสร็จสิ้น (Verified & Documented)
+
+

@@ -66,3 +66,21 @@ created: 2026-07-02
   http://hotel-app:3000
   ```
 - **การตรวจสอบ**: รันคำสั่ง `Invoke-WebRequest -Uri "https://hotel.nithep.com/" -Method Head -UseBasicParsing` ต้องได้ `StatusCode : 200`
+
+## 📌 ปัญหา Wi-Fi หลุดสลับและชนกันระหว่าง Cloudflare WARP และ WireGuard VPN
+- **อาการ**: สัญญาณ Wi-Fi บนเครื่อง Dashboard หลุดและเชื่อมต่อใหม่บ่อยครั้ง (Disconnect/Reconnect Loop) และเมื่อพยายามเปิดหน้าจอควบคุม WireGuard GUI จะมี Error แจ้งเตือนว่า `"Manager already installed and running"`
+- **สาเหตุ**:
+  1. **DNS/Routing Conflict:** Cloudflare One Client (WARP) บังคับเปลี่ยน DNS ไปที่ Loopback IP (`127.0.2.2`) ในขณะที่ WireGuard VPN พยายามคุม Route และ DNS วงเครือข่ายย่อยภายใน ทำให้ DNS เกิดสับสนชั่วคราว
+  2. **Windows NCSI & WiFi Reset:** Windows NCSI ตรวจเช็คอินเทอร์เน็ตล้มเหลว จึงแจ้ง "No Internet Access" และไดรเวอร์ Wi-Fi ของ Windows สั่งรีเซ็ต Adapter ตัวเองโดยอัตโนมัติเพื่อพยายามเชื่อมต่อใหม่
+  3. **WireGuard UI Instance Crash:** ตัวควบคุม GUI ของ WireGuard รันค้างอยู่แบบเบื้องหลังโดยที่ไม่มีไอคอนปรากฏบนทาสก์บาร์ เมื่อผู้ใช้กดรันซ้ำระบบจึงปฏิเสธการเปิดเนื่องจากตัวเดิมค้างอยู่
+- **การแก้ไขและเครื่องมืออัตโนมัติ (SOP)**:
+  
+  > **ต้องเปิดใช้งาน PowerShell ด้วยสิทธิ์ Run as Administrator เสมอในการแก้ไขค่าระบบเครือข่าย**
+  
+  1. เปิด PowerShell (Admin) และเรียกใช้งานเครื่องมือแก้ไขเครือข่ายอัตโนมัติ:
+     ```powershell
+     powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\Nithep\ไดรฟ์ของฉัน (cnithep@gmail.com)\Hotel-ECS\scripts\network_fix.ps1"
+     ```
+  2. สคริปต์จะดำเนินการแก้ไข Registry บังคับใช้ `UseGlobalDNS = 1` ให้แก่ Windows NCSI, เคลียร์บริการ WireGuard ตัวที่รันค้างเพื่อสกัด Error `"Manager already installed"`, และปรับระดับ Metric ของ Wi-Fi Adapter ให้มีความสำคัญสูงสุด (Interface Metric = 10) เมื่อเทียบกับ VPN (Interface Metric = 50)
+  3. **การตั้งค่าเพิ่มเติมบนคลาวด์:** เข้าแผงควบคุม Cloudflare Zero Trust Console ไปที่ **Settings -> WARP Client -> Split Tunnels (โหมด Exclude)** แล้วป้อนช่วง IP เครือข่ายเสมือนของโรงแรม (เช่น `10.0.0.0/8`, `10.0.0.0/24`) และพอร์ต UDP `51820` เพื่อขจัดปัญหาการชนกันของท่อ VPN ในระดับทราฟฟิกภายนอก
+
