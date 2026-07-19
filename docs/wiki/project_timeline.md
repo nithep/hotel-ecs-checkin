@@ -19,6 +19,7 @@
 ## 🧠 Phase 3: การสร้างสมองกลและระบบรักษาตัวเอง (Agentic AI & Self-Healing)
 **ช่วงเวลา:** [ปัจจุบัน - กรกฎาคม 2026]
 * **กำหนดกฎและทักษะ:** สร้างไฟล์ `AGENTS.md` และนำ AI Agent (ระบบ Antigravity) เข้ามาเป็นผู้ช่วยในการจัดการโค้ด
+* **Master Orchestrator (HECS):** ยกระดับบทบาท Agent หลักให้เป็นผู้จัดการ (Orchestrator) สั่งการ Subagents (Librarian, Verification) ในการวิเคราะห์โครงสร้างและจัดทำเอกสารหลัก `README.md` ระดับ Root สำเร็จ
 * **Skills Construction:** สร้างทักษะ `PBX_Protocol_Handler` (ล่ามแปลภาษาตู้สาขา) และ `State_Verifier` (ยามเฝ้าประตูเช็คสถานะความสำเร็จ)
 * **บูรณาการสถาปัตยกรรมระดับวิจัย (Academic-to-Production Harness):**
   - พัฒนาโมดูล `Program.md` เพื่อป้องกันปัญหา Context Drift ด้วย Global constraints
