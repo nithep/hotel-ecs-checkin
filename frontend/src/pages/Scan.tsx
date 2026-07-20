@@ -82,7 +82,7 @@ const Scan = () => {
           if (result) {
             handleQRResult(result.getText());
           }
-          if (err && !(err instanceof NotFoundException)) {
+          if (err && err.name !== 'NotFoundException') {
             console.error('QR Scan error:', err);
           }
         }
