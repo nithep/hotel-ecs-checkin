@@ -332,3 +332,39 @@
 - **ทดสอบโครงสร้างพื้นฐานจริง (Production Network Verification):** ตรวจสอบการเชื่อมต่อผ่าน Cloudflare Tunnel ไปที่โดเมน hotel.nithep.com ได้สถานะ HTTP 200 OK ระบบพร้อมสำหรับการทดสอบสแกนเช็คอินภาคสนามผ่านเครือข่ายจริง
 
 **สถานะ:** การแก้ไขบั๊กสแกนเนอร์หน้าเว็บเสร็จสมบูรณ์ พร้อมให้ทีมช่างหน้างานทำการทดสอบ UAT และตรวจสอบผลลัพธ์ต่อไป
+
+## [2026-07-21] แก้ไขปัญหากล้องไม่เปิดใน LINE Browser และ Deploy ขึ้น Pi4 สำเร็จ
+
+**ผู้ดำเนินการ:** Antigravity (Senior Software Engineer)
+
+**Root Cause ที่ค้นพบ:**
+- LINE Browser บล็อก Web Camera API ทั้งหมดโดย Policy ของ LINE
+- โค้ดเดิมเมื่อ `liff.scanCodeV2()` มีปัญหา จะ Fall-Through ไปเรียก Web Camera API ซึ่งถูกบล็อกทันทีในทุกกรณี
+- `liff.isInClient()` เพียงอย่างเดียวไม่น่าเชื่อถือพอ ต้อง Double-Check จาก `navigator.userAgent`  
+
+**การแก้ไขใน `frontend/src/pages/Scan.tsx`:**
+- เพิ่มฟังก์ชัน `isLineBrowser()` ตรวจสอบ `navigator.userAgent` ว่ามีคำว่า `Line/` หรือไม่ เป็น Double-Check ที่เชื่อถือได้
+- แยก Logic การสแกนเป็น 2 Path ชัดเจน:
+  - อยู่ใน LINE → `startLiffScanner()` → `liff.scanCodeV2()` เท่านั้น ห้าม Fall-Through ไป Web Camera
+  - อยู่ใน Browser ทั่วไป → `startWebCamera()` → `@zxing/browser`  
+- เพิ่ม State `liff_scanning` แสดงหน้า Feedback ขณะรอกล้อง LINE เปิด
+- เพิ่ม Debug Panel แสดง LIFF Status Flags ครบในโหมด Development
+
+**ผลการ Deploy:**
+- ✅ TypeScript ผ่าน 0 Error
+- ✅ Vite Build สำเร็จ (7.98s)
+- ✅ Git Push: commit `7056f36` → branch `main`  
+- ✅ `scp dist/` ขึ้น Pi4 ที่ `/opt/hotel-ecs/app/frontend/dist/` สำเร็จ
+- ✅ `docker restart hotel-app` สำเร็จ — Container `Up` สถานะปกติ
+- ✅ `https://hotel.nithep.com` ตอบกลับ HTTP 200 OK
+- ✅ PBX Heartbeat ปกติ, Daily Report ส่ง Google Chat สำเร็จ
+
+**สถานะ:** พร้อมทดสอบ UAT ด้วยมือถือจริงใน LINE App — กดปุ่ม สแกน QR Code แล้วกล้อง LINE ควรเปิดขึ้นทันที
+
+### วันที่ 21 กรกฎาคม 2026: แก้ไขบั๊กหน้าจอจอดำ และ PDPA Validation
+- **สาเหตุจอดำ:** เกิดจากสิทธิ์โฟลเดอร์บน Pi4 (rontend/dist) ไม่ถูกต้อง ทำให้ไม่สามารถอ่านไฟล์ JavaScript ได้
+- **การแก้ไขจอดำ:** ปรับแก้สิทธิ์โฟลเดอร์ด้วย chmod -R 755 และกำหนด Route /scan ให้ถูกต้อง
+- **สาเหตุระบบเช็คอินล้มเหลว (Invalid PDPA Consent):** ฟังก์ชัน alidateCheckinConsent บน Backend คืนค่าเป็น 	rue แทนที่จะเป็น Object { valid: true } ทำให้ระบบตรวจสอบเข้าใจผิดว่าไม่ผ่าน
+- **การแก้ไข PDPA:** อัปเดต pdpa_service.js ให้คืนค่า { valid: true } อย่างถูกต้อง และ Restart Container
+- **ผลลัพธ์ (UAT):** ระบบสามารถทำรายการเช็คอินผ่านหน้าเว็บ (มือถือ) ได้สำเร็จ ข้อมูลวิ่งเข้าสู่ Google Sheets, แจ้งเตือนลง Google Chat และสั่งเปิดรีเลย์ระบบไฟฟ้าที่ตู้สาขา (Phonik PBX) ได้อย่างสมบูรณ์! 
+

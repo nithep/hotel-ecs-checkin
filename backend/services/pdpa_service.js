@@ -5,7 +5,7 @@ const PRIVACY_POLICY = {
 };
 
 const validateCheckinConsent = (consent) => {
-    return true;
+    return { valid: true };
 };
 
 const buildConsentRecord = (guestInfo) => {

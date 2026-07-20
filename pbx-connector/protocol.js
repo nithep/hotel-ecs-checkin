@@ -494,152 +494,20 @@ module.exports = {
 /**
  * PBXProtocolHandler Class
  * สำหรับรองรับ CCH2 Protocol โดยเฉพาะ
- * 
- * CCH2 Protocol Specification:
- * - Command Format: ..COMMAND\r\n (ASCII text-based)
- * - Response Format: =>RESULT\r\n or =NACK\r\n
- * - Actions: 'ON' (turn on relay), 'OFF' (turn off relay)
- * - Room Number: 4-digit zero-padded string (e.g., "0101", "0203")
  */
 class PBXProtocolHandler {
-  /**
-   * Encode command to turn room relay ON or OFF.
-   * Converts high-level action ('ON'/'OFF') to CCH2 protocol string.
-   * 
-   * @param {string|number} roomNumber - Room number (will be normalized to 4 digits)
-   * @param {'ON'|'OFF'} action - Action to perform
-   * @returns {string} Complete CCH2 protocol command string with terminator
-   * @throws {Error} If action is invalid or room number is malformed
-   * 
-   * @example
-   * encodeCommand(101, 'ON')   // => '..ROOM0101=1\r\n'
-   * encodeCommand('0203', 'OFF') // => '..ROOM0203=0\r\n'
-   */
-  static encodeCommand(roomNumber, action) {
-    // Validate action parameter
-    if (action !== 'ON' && action !== 'OFF') {
-      throw new Error(`Invalid action: "${action}" — must be 'ON' or 'OFF'`);
-    }
-
-    // Normalize room number to 4-digit string
-    const normalizedRoom = normalizeRoom(roomNumber);
-
-    // Map action to PBX power value: ON=1, OFF=0
-    const powerValue = action === 'ON' ? 1 : 0;
-
-    // Build CCH2 protocol command: ..ROOM{room}={power}\r\n
-    return buildSetRoom(normalizedRoom, powerValue);
-  }
-
-  /**
-   * Decode raw response buffer/string from PBX hardware.
-   * Parses and categorizes response into ACK, NACK, or UNKNOWN.
-   * 
-   * Response Categories:
-   * - ACK: Command accepted successfully (=>ROOM..., =>NAME..., =>VERS..., etc.)
-   * - NACK: Command rejected or error (=NACK or ==NACK...)
-   * - UNKNOWN: Malformed or unrecognizable response
-   * 
-   * @param {Buffer|string} dataBuffer - Raw response from PBX (can be Buffer or string)
-   * @returns {{type: 'ACK'|'NACK'|'UNKNOWN', parsed: Object|null, raw: string}} Decoded response object
-   * 
-   * @example
-   * decodeResponse(Buffer.from('=>ROOM0101=1\r\n'))
-   * // => { type: 'ACK', parsed: {...}, raw: '=>ROOM0101=1\r\n' }
-   * 
-   * decodeResponse('=NACK')
-   * // => { type: 'NACK', parsed: {...}, raw: '=NACK' }
-   * 
-   * decodeResponse('garbage data')
-   * // => { type: 'UNKNOWN', parsed: null, raw: 'garbage data' }
-   */
-  static decodeResponse(dataBuffer) {
-    // Convert Buffer to string if necessary
-    let rawString;
-    if (Buffer.isBuffer(dataBuffer)) {
-      rawString = dataBuffer.toString('ascii');
-    } else if (typeof dataBuffer === 'string') {
-      rawString = dataBuffer;
-    } else {
-      return {
-        type: 'UNKNOWN',
-        parsed: null,
-        raw: String(dataBuffer),
-      };
-    }
-
-    // Parse the response using existing parseResponse function
-    const parsed = parseResponse(rawString);
-
-    // Categorize based on parsing result
-    let responseType;
-    
-    if (parsed.type === RESPONSE_TYPE.NACK || parsed.error) {
-      // NACK: Explicit rejection or parsing error
-      responseType = 'NACK';
-    } else if (
-      parsed.type === RESPONSE_TYPE.ROOM ||
-      parsed.type === RESPONSE_TYPE.POWER ||
-      parsed.type === RESPONSE_TYPE.NAME ||
-      parsed.type === RESPONSE_TYPE.VERSION ||
-      parsed.type === RESPONSE_TYPE.STOP ||
-      parsed.type === RESPONSE_TYPE.WAKE ||
-      parsed.type === RESPONSE_TYPE.LOCK
-    ) {
-      // ACK: Valid successful response
-      responseType = 'ACK';
-    } else {
-      // UNKNOWN: Unrecognized format
-      responseType = 'UNKNOWN';
-    }
-
-    return {
-      type: responseType,
-      parsed: parsed,
-      raw: rawString,
-    };
-  }
-
-  /**
-   * Build Check-In command (turns room relay ON).
-   * Alias for encodeCommand(room, 'ON').
-   * 
-   * @param {string|number} room - Room number
-   * @returns {string} Complete CCH2 protocol command string
-   */
   static buildCheckInCommand(room) {
-    return this.encodeCommand(room, 'ON');
+    return buildSetRoom(room, ROOM_STATUS.ON);
   }
 
-  /**
-   * Build Check-Out command (turns room relay OFF).
-   * Alias for encodeCommand(room, 'OFF').
-   * 
-   * @param {string|number} room - Room number
-   * @returns {string} Complete CCH2 protocol command string
-   */
   static buildCheckOutCommand(room) {
-    return this.encodeCommand(room, 'OFF');
+    return buildSetRoom(room, ROOM_STATUS.OFF);
   }
 
-  /**
-   * Build Set Guest Name command.
-   * 
-   * @param {string|number} room - Room number
-   * @param {string} name - Guest name (max 16 characters)
-   * @returns {string} Complete CCH2 protocol command string
-   */
   static buildSetNameCommand(room, name) {
     return buildSetName(room, name);
   }
 
-  /**
-   * Parse response string using existing parseResponse function.
-   * Maintains backward compatibility.
-   * 
-   * @param {string} responseStr - Raw response string from PBX
-   * @returns {Object} Parsed response object
-   */
   static parse(responseStr) {
     return parseResponse(responseStr);
   }

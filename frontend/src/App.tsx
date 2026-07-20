@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import type { ReactNode } from 'react';
 import AdminLayout from './components/AdminLayout';
 import StaffLayout from './components/StaffLayout';
+import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import Scan from './pages/Scan';
 import Presentation from './pages/Presentation';
@@ -19,14 +20,6 @@ const RoleBasedRedirect = () => {
   if (role === 'admin') return <Navigate to="/admin" replace />;
   if (role === 'staff') return <Navigate to="/staff" replace />;
   return <Navigate to="/guest" replace />;
-};
-
-const ProtectedRoute = ({ allowedRoles, children }: { allowedRoles: string[], children: ReactNode }) => {
-  const { role } = useAuth();
-  if (!allowedRoles.includes(role)) {
-    return <RoleBasedRedirect />;
-  }
-  return children;
 };
 
 // Simple Landing Page for testing
@@ -74,8 +67,9 @@ function App() {
 
           {/* Check-in Page (Public) */}
           <Route path="/checkin" element={<CheckIn />} />
+          <Route path="/scan" element={<Scan />} />
 
-          {/* Guest Role Route */}
+          {/* Guest Role Route - Open to all authenticated users */}
           <Route path="/guest" element={
             <ProtectedRoute allowedRoles={['guest', 'admin', 'staff']}>
               <GuestView />
