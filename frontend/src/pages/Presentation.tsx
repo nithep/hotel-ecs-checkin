@@ -27,13 +27,13 @@ const Presentation = () => {
  
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mt-8">
           <Link
-            to="/scan"
+            to="scan"
             className="px-8 py-4 bg-gradient-to-r from-hotel-accent to-amber-600 hover:from-amber-500 hover:to-hotel-accent text-white rounded-full font-bold text-lg transition-all active:scale-95 shadow-xl shadow-amber-950/20 flex items-center gap-2"
           >
             เริ่มเช็คอินด้วยตนเอง <ArrowRight size={20} />
           </Link>
           <Link
-            to="/dashboard"
+            to="dashboard"
             className="px-8 py-4 bg-slate-950 hover:bg-slate-900 text-slate-300 rounded-full font-semibold text-lg transition-all active:scale-95 border border-slate-900"
           >
             แผงควบคุมหลัก (Dashboard)

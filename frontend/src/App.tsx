@@ -1,5 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import type { ReactNode } from 'react';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
+
 import AdminLayout from './components/AdminLayout';
 import StaffLayout from './components/StaffLayout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -11,16 +11,8 @@ import WifiSettings from './pages/WifiSettings';
 import QRCodeGenerator from './pages/QRCodeGenerator';
 import Copilot from './pages/Copilot';
 import CheckIn from './pages/CheckIn';
-import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthProvider } from './context/AuthContext';
 import Login from './pages/Login';
-
-const RoleBasedRedirect = () => {
-  const { role, token } = useAuth();
-  if (!token) return <Navigate to="/login" replace />;
-  if (role === 'admin') return <Navigate to="/admin" replace />;
-  if (role === 'staff') return <Navigate to="/staff" replace />;
-  return <Navigate to="/guest" replace />;
-};
 
 // Simple Landing Page for testing
 const LandingPage = () => {
