@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type AxiosError } from 'axios';
 
-// API Base URL - เปลี่ยนตาม environment
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+// API Base URL - ใช้ relative path เพื่อรองรับทั้ง local และ production (Cloudflare Tunnel)
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 // Create Axios instance with default config
 const apiClient: AxiosInstance = axios.create({

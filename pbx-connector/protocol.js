@@ -161,14 +161,13 @@ function sanitizeName(name, room = '') {
  * @param {number} status - Status value from ROOM_STATUS enum (0-3)
  * @returns {string} Complete command string with terminator
  */
-function buildSetRoom(room, status, days = 1) {
+function buildSetRoom(room, status) {
   const numb = normalizeRoom(room);
   validateStatus(status);
   
-  // แปลง status (0=OFF, 1=ON) ไปเป็นจำนวนวันที่ต้องการเปิดไฟ (สำหรับ ON จะใช้ days, ส่วน OFF จะใช้ 0)
-  const powerValue = status === ROOM_STATUS.ON ? days : 0;
+  const powerValue = status === ROOM_STATUS.ON ? 1 : 0;
   
-  return `${CMD_PREFIX}PWER${numb}=${powerValue}${TERMINATOR}`;
+  return `${CMD_PREFIX}ROOM${numb}=${powerValue}${TERMINATOR}`;
 }
 
 /**
@@ -182,7 +181,7 @@ function buildSetRoom(room, status, days = 1) {
  */
 function buildGetRoom(room) {
   const numb = normalizeRoom(room);
-  return `${CMD_PREFIX}PWER${numb}=${TERMINATOR}`;
+  return `${CMD_PREFIX}ROOM${numb}=${TERMINATOR}`;
 }
 
 /**
@@ -417,9 +416,7 @@ function parseResponse(rawString) {
     return result;
   }
 
-  // ── PWER{1-4digits}={on|off ...} ──
-  // PBX replies: ==PWER1017=on 14/07/26 18:52:33 - 15/07/26 01:00:00
-  // or: ==PWER1017=off
+  // ── PWER{1-4digits}={on|off ...} (Legacy fallback if needed) ──
   const pwerMatch = body.match(/^PWER(\d{1,4})=(on|off)(?:\s.*)?$/i);
   if (pwerMatch) {
     result.type = RESPONSE_TYPE.POWER;
@@ -493,3 +490,28 @@ module.exports = {
   // Parser
   parseResponse,
 };
+
+/**
+ * PBXProtocolHandler Class
+ * สำหรับรองรับ CCH2 Protocol โดยเฉพาะ
+ */
+class PBXProtocolHandler {
+  static buildCheckInCommand(room) {
+    return buildSetRoom(room, ROOM_STATUS.ON);
+  }
+
+  static buildCheckOutCommand(room) {
+    return buildSetRoom(room, ROOM_STATUS.OFF);
+  }
+
+  static buildSetNameCommand(room, name) {
+    return buildSetName(room, name);
+  }
+
+  static parse(responseStr) {
+    return parseResponse(responseStr);
+  }
+}
+
+module.exports.PBXProtocolHandler = PBXProtocolHandler;
+

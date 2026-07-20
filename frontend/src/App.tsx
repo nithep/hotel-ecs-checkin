@@ -5,7 +5,6 @@ import StaffLayout from './components/StaffLayout';
 import Dashboard from './pages/Dashboard';
 import Scan from './pages/Scan';
 import Presentation from './pages/Presentation';
-import Manual from './pages/Manual';
 import GuestView from './pages/GuestView';
 import WifiSettings from './pages/WifiSettings';
 import QRCodeGenerator from './pages/QRCodeGenerator';
@@ -105,7 +104,6 @@ function App() {
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="scan" element={<CheckIn />} />
             <Route path="qr-generator" element={<QRCodeGenerator />} />
-            <Route path="manual" element={<Manual />} />
             <Route path="wifi" element={<WifiSettings />} />
             <Route path="copilot" element={<Copilot />} />
           </Route>

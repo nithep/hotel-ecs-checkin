@@ -22,10 +22,16 @@ const Login = () => {
       const { success, token, role } = response.data;
 
       if (success && token) {
+        // Map backend roles -> frontend roles
+        const mappedRole: UserRole =
+          role === 'owner' ? 'admin' :
+          role === 'front_desk' ? 'staff' : 'guest';
+
         setToken(token);
-        setRole(role as UserRole);
+        setRole(mappedRole);
+
         // Redirect based on role
-        if (role === 'owner' || role === 'admin') {
+        if (mappedRole === 'admin') {
           navigate('/admin');
         } else {
           navigate('/staff/dashboard');

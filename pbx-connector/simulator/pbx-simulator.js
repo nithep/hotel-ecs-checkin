@@ -357,12 +357,12 @@ function processCommand(rawCommand) {
         return { response: '==STOP', shouldClose: true };
     }
 
-    // ── PWER command ──
-    // Patterns: PWERnnn=r (set) or PWERnnn= (read)
-    const pwerMatch = body.match(/^PWER(\d{3,4})=(\d?)$/);
-    if (pwerMatch) {
-        const roomNum = normalizeRoomNum(pwerMatch[1]);
-        const value   = pwerMatch[2];
+    // 1. Power Control (ROOM) -> เปลี่ยนจาก PWER เป็น ROOM ตาม CCH2
+    // ..ROOM{room}=1 (ON), ..ROOM{room}=0 (OFF), ..ROOM{room}= (GET)
+    const roomMatch = body.match(/^ROOM(\d{3,4})=(\d?)$/);
+    if (roomMatch) {
+      const roomNum = normalizeRoomNum(roomMatch[1]);
+      const value = roomMatch[2];
 
         // Validate room exists
         if (!rooms[roomNum]) {
@@ -378,9 +378,9 @@ function processCommand(rawCommand) {
 
         if (value === '') {
             // READ: return current status
-            const statusStr = rooms[roomNum].status === 1 ? 'on' : 'off';
+            const statusStr = rooms[roomNum].status === 1 ? '1' : '0';
             return {
-                response: `==PWER${roomNum}=${statusStr}`,
+                response: `==ROOM${roomNum}=${statusStr}`,
                 shouldClose: false,
             };
         } else {

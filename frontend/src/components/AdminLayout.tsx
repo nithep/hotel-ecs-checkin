@@ -21,7 +21,6 @@ const AdminLayout = () => {
     { path: `${basePath}/qr-generator`, label: 'สร้าง QR', labelEn: 'QR Generator', icon: Printer },
     { path: `${basePath}/wifi`, label: 'ตั้งค่าเครือข่าย', labelEn: 'Network Settings', icon: Wifi },
     { path: `${basePath}/copilot`, label: 'AI Copilot', icon: Bot },
-    { path: `${basePath}/manual`, label: 'คู่มือและบันทึก', labelEn: 'Manual & Logs', icon: BookOpen },
   ];
 
   const handleLogout = () => {
