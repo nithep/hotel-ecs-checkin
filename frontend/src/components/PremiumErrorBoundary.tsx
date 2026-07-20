@@ -1,4 +1,4 @@
-import React, { Component, type ErrorInfo, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface Props {
   children: ReactNode;
@@ -93,7 +93,7 @@ class PremiumErrorBoundary extends Component<Props, State> {
             </p>
 
             {/* Technical Details (Collapsible) */}
-            {process.env.NODE_ENV === 'development' && this.state.error && (
+            {import.meta.env.MODE === 'development' && this.state.error && (
               <details className="mb-6 bg-black/30 rounded-lg p-4 border border-white/5">
                 <summary className="text-sm text-gray-400 cursor-pointer hover:text-gray-300 transition-colors">
                   รายละเอียดทางเทคนิค (คลิกเพื่อดู)

@@ -1,7 +1,7 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
-  LayoutDashboard, QrCode, Wifi, Bot, MonitorPlay, Printer, BookOpen, Settings,
+  LayoutDashboard, QrCode, Wifi, Bot, MonitorPlay, Printer, Settings,
   User, Globe, LogOut, ChevronDown
 } from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';

@@ -1,18 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { QrCode, ScanLine, CheckCircle2, XCircle, Bed, User, ArrowRight, CameraOff, AlertTriangle, ShieldAlert, Lock } from 'lucide-react';
+import { QrCode, CheckCircle2, XCircle, Bed, User, ArrowRight, CameraOff, Lock } from 'lucide-react';
 import liff from '@line/liff';
-import { BrowserMultiFormatReader, NotFoundException } from '@zxing/browser';
+import { BrowserMultiFormatReader } from '@zxing/browser';
 
 type ScanStatus = 'idle' | 'camera_active' | 'scanned' | 'processing' | 'success' | 'error' | 'permission_denied' | 'insecure_context';
 type FlowType = 'checkin' | 'checkout';
 
-interface Room {
-  id: number;
-  status: 'occupied' | 'vacant';
-  power: boolean;
-}
 
 const Scan = () => {
   const [searchParams] = useSearchParams();
