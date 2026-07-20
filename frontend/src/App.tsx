@@ -1,8 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
-
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import type { ReactNode } from 'react';
 import AdminLayout from './components/AdminLayout';
 import StaffLayout from './components/StaffLayout';
-import ProtectedRoute from './components/ProtectedRoute';
 import Dashboard from './pages/Dashboard';
 import Scan from './pages/Scan';
 import Presentation from './pages/Presentation';
@@ -11,8 +10,18 @@ import WifiSettings from './pages/WifiSettings';
 import QRCodeGenerator from './pages/QRCodeGenerator';
 import Copilot from './pages/Copilot';
 import CheckIn from './pages/CheckIn';
-import { AuthProvider } from './context/AuthContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
+import Unauthorized from './components/Unauthorized';
+
+const ProtectedRoute = ({ allowedRoles, children }: { allowedRoles: string[], children: ReactNode }) => {
+  const { role, token } = useAuth();
+  if (!token) return <Navigate to="/login" replace />;
+  if (!allowedRoles.includes(role)) {
+    return <Navigate to="/unauthorized" replace />;
+  }
+  return children;
+};
 
 // Simple Landing Page for testing
 const LandingPage = () => {
@@ -57,11 +66,14 @@ function App() {
           {/* Login Page */}
           <Route path="/login" element={<Login />} />
 
+          {/* Unauthorized Page */}
+          <Route path="/unauthorized" element={<Unauthorized />} />
+
           {/* Check-in Page (Public) */}
           <Route path="/checkin" element={<CheckIn />} />
           <Route path="/scan" element={<Scan />} />
 
-          {/* Guest Role Route - Open to all authenticated users */}
+          {/* Guest Role Route */}
           <Route path="/guest" element={
             <ProtectedRoute allowedRoles={['guest', 'admin', 'staff']}>
               <GuestView />

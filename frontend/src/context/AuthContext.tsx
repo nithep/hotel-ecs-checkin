@@ -14,7 +14,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [role, setRole] = useState<UserRole>(() => {
-    return (localStorage.getItem('user_role') as UserRole) || 'guest';
+    const savedRole = localStorage.getItem('user_role');
+    if (savedRole === 'admin' || savedRole === 'staff' || savedRole === 'guest') {
+      return savedRole as UserRole;
+    }
+    // Auto-map owner to admin for backwards compatibility
+    if (savedRole === 'owner') return 'admin';
+    
+    return 'guest';
   });
   
   const [token, setToken] = useState<string | null>(() => {

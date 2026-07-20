@@ -180,7 +180,7 @@ const AdminLayout = () => {
               </div>
               <div className="text-left">
                 <p className="text-xs font-semibold text-white">
-                  {auth.getRole() === 'owner' ? 'ผู้ดูแลระบบ' : 'เจ้าหน้าที่'}
+                  {auth.getRole() === 'admin' || auth.getRole() === 'owner' ? 'ผู้ดูแลระบบ' : 'เจ้าหน้าที่'}
                 </p>
                 <p className="text-[10px] text-slate-400 capitalize">{auth.getRole()}</p>
               </div>

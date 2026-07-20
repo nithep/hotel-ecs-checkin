@@ -1,9 +1,8 @@
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { LayoutDashboard, QrCode, Printer, MonitorPlay } from 'lucide-react';
+import RoleSwitcher from './RoleSwitcher';
 
-// SECURITY: Staff layout enforces strict RBAC - NO role switching allowed
-// Navigation matrix is hardcoded to prevent client-side privilege escalation
 const StaffLayout = () => {
   const location = useLocation();
   const basePath = '/staff';
@@ -56,11 +55,8 @@ const StaffLayout = () => {
               })}
             </nav>
             
-            {/* SECURITY: RoleSwitcher REMOVED - No client-side role escalation allowed */}
             <div className="flex items-center gap-4">
-              <div className="px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                <span className="text-xs font-medium text-emerald-400 uppercase tracking-wider">Staff Access</span>
-              </div>
+              <RoleSwitcher />
             </div>
           </div>
         </div>
@@ -79,7 +75,7 @@ const StaffLayout = () => {
         </motion.div>
       </main>
 
-      {/* Mobile Bottom Navigation Bar - STAFF-ONLY ROUTES */}
+      {/* Mobile Bottom Navigation Bar */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 border-t border-slate-800/80 backdrop-blur-lg h-16 flex items-center justify-around px-2 pb-safe shadow-[0_-5px_20px_rgba(0,0,0,0.5)]">
         {navItems.map((item) => {
           const Icon = item.icon;

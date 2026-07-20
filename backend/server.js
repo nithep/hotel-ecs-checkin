@@ -1963,7 +1963,10 @@ Be concise. Answer in Thai. Provide direct command line suggestions with copyabl
 app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
 // React Router Fallback
-app.use((req, res) => {
+app.use((req, res, next) => {
+    if (req.path.startsWith('/assets/') || req.path.startsWith('/api/')) {
+        return res.status(404).send('Not Found');
+    }
     res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 

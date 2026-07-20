@@ -476,52 +476,53 @@ const Dashboard = () => {
       </AnimatePresence>
 
       {/* Header & Main Stats */}
-      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6 relative z-10">
-        <div>
-          <h1 className="text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-hotel-city to-hotel-accent drop-shadow-lg">
-            Hotel ECS Dashboard
-          </h1>
-          <p className="text-slate-400 mt-2 flex items-center gap-2 font-medium">
-            <span className="relative flex h-3 w-3">
-              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 \${pbxInfo?.isReady || pbxInfo?.mode === 'mock' ? 'bg-hotel-accent' : 'bg-rose-500'}`}></span>
-              <span className={`relative inline-flex rounded-full h-3 w-3 shadow-[0_0_10px_rgba(56,189,248,0.8)] \${pbxInfo?.isReady || pbxInfo?.mode === 'mock' ? 'bg-hotel-accent' : 'bg-rose-500'}`}></span>
-            </span>
-            {pbxInfo ? (
-              pbxInfo.mode === 'tcp' ? (
-                pbxInfo.isReady ? (
-                  `เชื่อมต่อตู้สาขา Phonik PBX จริงสำเร็จ (โหมด TCP: ${pbxInfo.details.match(/\d+\.\d+\.\d+\.\d+:\d+/)?.[0] || '192.168.1.91'})`
-                ) : (
-                  `กำลังเชื่อมต่อตู้สาขา Phonik PBX... (โหมด TCP / เชื่อมต่อขัดข้อง)`
-                )
-              ) : (
-                `เชื่อมต่อระบบจำลองตู้สาขาสำเร็จ (โหมด Simulator)`
-              )
-            ) : (
-              `กำลังตรวจสอบการเชื่อมต่อตู้สาขา Phonik PBX...`
-            )}
-          </p>
-          <div className="mt-5 flex gap-2">
+      <div className="flex flex-col gap-4 relative z-10">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white via-hotel-city to-hotel-accent drop-shadow-lg">
+              Hotel ECS
+            </h1>
+            <p className="text-slate-400 mt-1.5 flex items-start gap-2 font-medium text-xs sm:text-sm">
+              <span className="relative flex h-2.5 w-2.5 mt-1 flex-shrink-0">
+                <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                  pbxInfo?.isReady || pbxInfo?.mode === 'mock' ? 'bg-hotel-accent' : 'bg-rose-500'
+                }`}></span>
+                <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+                  pbxInfo?.isReady || pbxInfo?.mode === 'mock' ? 'bg-hotel-accent shadow-[0_0_8px_rgba(56,189,248,0.8)]' : 'bg-rose-500'
+                }`}></span>
+              </span>
+              <span className="leading-snug line-clamp-2">
+                {pbxInfo ? (
+                  pbxInfo.mode === 'tcp' ? (
+                    pbxInfo.isReady
+                      ? `PBX เชื่อมต่อสำเร็จ (${pbxInfo.details.match(/\d+\.\d+\.\d+\.\d+:\d+/)?.[0] || '192.168.1.91'})`
+                      : 'PBX กำลังเชื่อมต่อ... (TCP ขัดข้อง)'
+                  ) : 'ระบบจำลอง PBX (Simulator)'
+                ) : 'กำลังตรวจสอบการเชื่อมต่อ...'}
+              </span>
+            </p>
+          </div>
+          <div className="flex gap-2 flex-shrink-0">
             <a
-              href="https://meet.google.com/new"
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-hotel-city/10 hover:bg-hotel-city/20 border border-hotel-city/30 text-hotel-city rounded-xl text-sm font-semibold transition-all hover:shadow-[0_0_20px_rgba(108,171,221,0.3)] active:scale-95"
+              href="https://meet.google.com/new" target="_blank" rel="noreferrer"
+              className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-hotel-city/10 hover:bg-hotel-city/20 border border-hotel-city/30 text-hotel-city rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-95"
             >
-              <Video size={18} />
-              เปิด Virtual Kiosk (รอรับสายแขก)
+              <Video size={15} />
+              <span className="hidden sm:inline">Virtual Kiosk</span>
+              <span className="sm:hidden">Kiosk</span>
             </a>
             <button
               onClick={handleLogout}
-              className="inline-flex items-center gap-2 px-5 py-2.5 bg-rose-950/30 hover:bg-rose-950/50 border border-rose-900/30 text-rose-400 rounded-xl text-sm font-semibold transition-all active:scale-95 hover:shadow-[0_0_20px_rgba(244,63,94,0.15)]"
+              className="inline-flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-rose-950/30 hover:bg-rose-950/50 border border-rose-900/30 text-rose-400 rounded-xl text-xs sm:text-sm font-semibold transition-all active:scale-95"
             >
-              <LogOut size={18} />
-              ล็อกคอนโซล (Logout)
+              <LogOut size={15} />
+              <span className="hidden sm:inline">ล็อกเอาท์</span>
             </button>
           </div>
         </div>
 
         {/* Dynamic Navigation Tabs */}
-        <div className="flex bg-hotel-dark/40 backdrop-blur-md p-1.5 rounded-2xl border border-white/10 w-full lg:w-auto overflow-x-auto shadow-inner">
+        <div className="flex bg-hotel-dark/40 backdrop-blur-md p-1 rounded-2xl border border-white/10 w-full overflow-x-auto shadow-inner scrollbar-none gap-0.5">
           <button
             onClick={() => setActiveTab('rooms')}
             className={`flex-1 lg:flex-none px-5 py-2.5 rounded-xl text-sm font-medium transition-all duration-300 flex items-center justify-center gap-2 whitespace-nowrap ${
@@ -579,46 +580,28 @@ const Dashboard = () => {
       </div>
 
       {/* Top Stat Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden group hover:border-hotel-accent/30 transition-colors">
-          <div className="p-3 bg-hotel-accent/10 text-hotel-accent rounded-xl">
-            <BedDouble size={24} />
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[{
+          icon: <BedDouble size={20} />, label: 'ทั้งหมด', value: `${stats.total}`, sub: 'ห้อง',
+          color: 'text-hotel-accent', bg: 'bg-hotel-accent/10', border: 'hover:border-hotel-accent/30'
+        }, {
+          icon: <Users size={20} />, label: 'เข้าพัก', value: `${stats.occupied}`, sub: 'ห้อง',
+          color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'hover:border-emerald-500/30'
+        }, {
+          icon: <Zap size={20} />, label: 'จ่ายไฟ', value: `${stats.powerOn}`, sub: 'ห้อง',
+          color: 'text-hotel-accent', bg: 'bg-hotel-accent/15 animate-pulse-slow', border: 'hover:border-hotel-accent/30'
+        }, {
+          icon: <Lock size={20} />, label: 'รออนุมัติ', value: `${stats.pending}`, sub: 'รายการ',
+          color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'hover:border-amber-500/30'
+        }].map((s, i) => (
+          <div key={i} className={`glass-panel rounded-2xl p-3 sm:p-5 flex items-center gap-3 relative overflow-hidden transition-colors ${s.border}`}>
+            <div className={`p-2 sm:p-3 ${s.bg} ${s.color} rounded-xl flex-shrink-0`}>{s.icon}</div>
+            <div className="min-w-0">
+              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider truncate">{s.label}</p>
+              <p className={`text-xl sm:text-2xl font-bold ${s.color}`}>{s.value} <span className="text-xs font-normal text-slate-500">{s.sub}</span></p>
+            </div>
           </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">ห้องพักทั้งหมด</p>
-            <p className="text-2xl font-bold text-slate-100">{stats.total} ห้อง</p>
-          </div>
-        </div>
-        
-        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden hover:border-emerald-500/30 transition-colors">
-          <div className="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl">
-            <Users size={24} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">เช็คอินแล้ว</p>
-            <p className="text-2xl font-bold text-emerald-400">{stats.occupied} ห้อง</p>
-          </div>
-        </div>
-
-        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden hover:border-hotel-accent/30 transition-colors">
-          <div className="p-3 bg-hotel-accent/15 text-hotel-accent rounded-xl animate-pulse-slow">
-            <Zap size={24} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">จ่ายกระแสไฟ</p>
-            <p className="text-2xl font-bold text-slate-100">{stats.powerOn} ห้อง</p>
-          </div>
-        </div>
-
-        <div className="glass-panel rounded-2xl p-5 flex items-center gap-4 relative overflow-hidden hover:border-amber-500/30 transition-colors">
-          <div className="p-3 bg-amber-500/10 text-amber-500 rounded-xl">
-            <Lock size={24} />
-          </div>
-          <div>
-            <p className="text-xs text-slate-500 font-semibold uppercase tracking-wider">รอความปลอดภัย</p>
-            <p className="text-2xl font-bold text-amber-500">{stats.pending} รายการ</p>
-          </div>
-        </div>
+        ))}
       </div>
 
       {/* Main Tab Content */}
