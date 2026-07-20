@@ -31,3 +31,5 @@ timestamp: "2026-06-28T02:00:00+07:00"
 | **2026-07-10** | จัดทำคู่มือ [[wiki/system_cost_and_maintenance|ทะเบียนค่าใช้จ่ายและการบำรุงรักษาระบบ]] เพื่อเก็บบันทึกประวัติและเตือนการเรียกเก็บเงินของ Google Workspace และโดเมน nithep.com | Librarian (Antigravity) |
 | **2026-07-14** | ตรวจสุขภาพ Vault (raw สะอาด) และอัปเดตลิงก์ wiki ที่ตกหล่นเข้าสู่สารบัญ `index.md` รวมถึงตรวจสอบการเชื่อมต่อ Pi 4 (พบปัญหา Ping timeout) | Librarian (Antigravity) |
 | **2026-07-17** | วิเคราะห์และแก้ไขปัญหา `EHOSTUNREACH` (Connection Lost) พร้อมอัปเกรดระบบพยายามเชื่อมต่ออัตโนมัติแบบวนซ้ำ (Periodic Reconnection Loop) สำหรับ PBX | Antigravity |
+| **2026-07-20** | ทำ Vault Distillation (OKF): สกัดเอกสารประกาศและผลกระทบของข้อกำหนด LINE MINI App IAP (July 2026) เป็น [[wiki/line-mini-app-iap-terms|การวิเคราะห์ข้อกำหนดการใช้งานและการซื้อภายในแอป LINE MINI App]] และบันทึกข้อมูลดิบใน archive | Librarian (Antigravity) |
+

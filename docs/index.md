@@ -58,6 +58,7 @@ timestamp: "2026-06-28T02:00:00+07:00"
 - [[wiki/new_site_commissioning_guide|new_site_commissioning_guide]]
 - [[wiki/operational_scenarios|operational_scenarios]]
 - [[wiki/phase5-line-integration|phase5-line-integration]]
+- [[wiki/line-mini-app-iap-terms|การวิเคราะห์ข้อกำหนดการใช้งานและการซื้อภายในแอป LINE MINI App (IAP Update 2026)]]
 - [[wiki/phase6-system-blueprint|phase6-system-blueprint]]
 - [[wiki/simulation_report|simulation_report]]
 - [[wiki/solo_dev_business_strategy|solo_dev_business_strategy]]

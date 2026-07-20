@@ -53,7 +53,38 @@ const Scan = () => {
   };
 
   const startCamera = async () => {
-    // 1. Check for Secure Context (HTTPS or localhost)
+    setErrorMsg('');
+
+    // 1. Try to use LINE LIFF Native Scanner if running inside LINE app
+    if (liff.isInClient()) {
+      try {
+        if (liff.isApiAvailable('scanCodeV2')) {
+          const result = await liff.scanCodeV2();
+          if (result && result.value) {
+            handleQRResult(result.value);
+            return;
+          }
+        } else if (liff.isApiAvailable('scanCode')) {
+          // Fallback to older scanCode if scanCodeV2 is not available
+          const result = await (liff as any).scanCode();
+          if (result && result.value) {
+            handleQRResult(result.value);
+            return;
+          }
+        }
+      } catch (err: any) {
+        console.error('LINE scanCode failed:', err);
+        // If user cancelled, don't fall back to web camera, just reset status to idle
+        const errMsg = err.message || '';
+        if (errMsg.includes('cancel') || errMsg.includes('user cancelled') || err.errorCode === 'USER_CANCELLED') {
+          setStatus('idle');
+          return;
+        }
+        // For other errors, continue to web camera fallback
+      }
+    }
+
+    // 2. Check for Secure Context (HTTPS or localhost) for standard Web Camera
     const isSecureContext = window.isSecureContext || window.location.protocol === 'https:' || window.location.hostname === 'localhost';
     if (!isSecureContext) {
       setStatus('insecure_context');
@@ -61,7 +92,6 @@ const Scan = () => {
     }
 
     setStatus('camera_active');
-    setErrorMsg('');
 
     try {
       const devices = await BrowserMultiFormatReader.listVideoInputDevices();
