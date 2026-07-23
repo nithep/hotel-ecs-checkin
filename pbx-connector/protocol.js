@@ -109,11 +109,25 @@ function normalizeRoom(room) {
   if (room === null || room === undefined) {
     throw new Error('Room number is required');
   }
-  const str = String(room).trim();
+  let str = String(room).trim();
+  if (str.startsWith('http') || str.includes('?')) {
+    try {
+      const match = str.match(/[?&]room=(\d+)/);
+      if (match) {
+        str = match[1];
+      } else {
+        const url = new URL(str);
+        str = url.searchParams.get('room') || str;
+      }
+    } catch (e) {
+      const match = str.match(/[?&]room=(\d+)/);
+      if (match) str = match[1];
+    }
+  }
   if (!/^\d{1,4}$/.test(str)) {
     throw new Error(`Invalid room number: "${room}" — must be 1-4 digits`);
   }
-  return str;
+  return str.padStart(4, '0');
 }
 
 /**
@@ -161,58 +175,89 @@ function sanitizeName(name, room = '') {
  * @param {number} status - Status value from ROOM_STATUS enum (0-3)
  * @returns {string} Complete command string with terminator
  */
-function buildSetRoom(room, status) {
-  const numb = normalizeRoom(room);
+/**
+ * Map room number to Extension number on the PBX.
+ * ห้อง 101-106 แผนผังในตู้สาขา Phonik จะตรงกับ Extension 1017-1022 (Offset +916)
+ *
+ * @param {string|number} room - Room number
+ * @returns {string} Extension string
+ */
+function getExtensionForRoom(room) {
+  const r = parseInt(String(room).replace(/^0+/, ''), 10);
+  if (r >= 101 && r <= 106) {
+    return String(r + 916);
+  }
+  return String(room).replace(/^0+/, '');
+}
+
+/**
+ * Build command to **set** room status (Check-in/Check-out).
+ * ใช้คำสั่ง PWER ในการควบคุมไฟฟ้า (PWER101=1 เปิด, PWER101=0 ปิด)
+ *
+ * @example
+ * buildSetRoom(101, ROOM_STATUS.ON)   // => '..PWER101=1\r\n'
+ * buildSetRoom('0203', ROOM_STATUS.OFF) // => '..PWER203=0\r\n'
+ *
+ * @param {string|number} room - Room number
+ * @param {number} status - Status value from ROOM_STATUS enum (0-3)
+ * @param {number} [days=1] - Number of days (duration)
+ * @returns {string} Complete command string with terminator
+ */
+function buildSetRoom(room, status, days = 1) {
+  const cleanRoom = String(room).replace(/^0+/, '') || '0';
   validateStatus(status);
   
   const powerValue = status === ROOM_STATUS.ON ? 1 : 0;
   
-  return `${CMD_PREFIX}ROOM${numb}=${powerValue}${TERMINATOR}`;
+  return `${CMD_PREFIX}PWER${cleanRoom}=${powerValue}${TERMINATOR}`;
 }
 
 /**
  * Build command to **read** current room status.
+ * การอ่านสถานะไฟฟ้าจะส่งคำสั่งแบบกลุ่ม ..PWER=ALL เสมอเนื่องจากตู้ไม่รองรับการสืบค้นเดี่ยว
  *
  * @example
- * buildGetRoom(101) // => '..ROOM0101=\r\n'
+ * buildGetRoom(101) // => '..PWER=ALL\r\n'
  *
  * @param {string|number} room - Room number
  * @returns {string} Complete command string with terminator
  */
 function buildGetRoom(room) {
-  const numb = normalizeRoom(room);
-  return `${CMD_PREFIX}ROOM${numb}=${TERMINATOR}`;
+  return `${CMD_PREFIX}PWER=ALL${TERMINATOR}`;
 }
 
 /**
  * Build command to **set** guest name for a room.
+ * บันทึกชื่อแขกจะใช้คำสั่ง ROOM ผ่าน Extension ของห้องพักนั้น (เช่น ..ROOM1017=GuestName)
  *
  * @example
- * buildSetName(101, 'John Doe') // => '..NAME0101=John Doe\r\n'
+ * buildSetName(101, 'John Doe') // => '..ROOM1017=John Doe\r\n'
  *
  * @param {string|number} room - Room number
  * @param {string} name - Guest name (max 16 characters)
  * @returns {string} Complete command string with terminator
  */
 function buildSetName(room, name) {
-  const numb = normalizeRoom(room);
-  const safeName = sanitizeName(name, numb);
-  return `${CMD_PREFIX}NAME${numb}=${safeName}${TERMINATOR}`;
+  const ext = getExtensionForRoom(room);
+  const safeName = sanitizeName(name, ext);
+  return `${CMD_PREFIX}ROOM${ext}=${safeName}${TERMINATOR}`;
 }
 
 /**
  * Build command to **read** guest name for a room.
+ * อ่านชื่อแขกผ่าน ROOM บน Extension (เช่น ..ROOM1017=)
  *
  * @example
- * buildGetName(101) // => '..NAME0101=\r\n'
+ * buildGetName(101) // => '..ROOM1017=\r\n'
  *
  * @param {string|number} room - Room number
  * @returns {string} Complete command string with terminator
  */
 function buildGetName(room) {
-  const numb = normalizeRoom(room);
-  return `${CMD_PREFIX}NAME${numb}=${TERMINATOR}`;
+  const ext = getExtensionForRoom(room);
+  return `${CMD_PREFIX}ROOM${ext}=${TERMINATOR}`;
 }
+
 
 /**
  * Build command to **set** terminal command mode (tcmd=1).
@@ -283,7 +328,7 @@ function buildPing() {
  * @throws {Error} ถ้า time format ไม่ถูกต้อง
  */
 function buildSetWake(room, time) {
-  const numb = normalizeRoom(room);
+  const ext = getExtensionForRoom(room);
   if (!/^\d{4}$/.test(time)) {
     throw new Error(`Invalid wake time: "${time}" — must be hhmm format (e.g. "0630")`);
   }
@@ -292,14 +337,14 @@ function buildSetWake(room, time) {
   if (hh > 23 || mm > 59) {
     throw new Error(`Invalid wake time: "${time}" — hours 0-23, minutes 0-59`);
   }
-  return `${CMD_PREFIX}WAKE${numb}=${time}${TERMINATOR}`;
+  return `${CMD_PREFIX}WAKE${ext}=${time}${TERMINATOR}`;
 }
 
 /**
  * Build command to **set** room lock status.
  *
  * @example
- * buildSetLock(101, 1) // => '..LOCK0101=1\r\n'
+ * buildSetLock(101, 1) // => '..LOCK1017=1\r\n'
  *
  * @param {string|number} room - Room number
  * @param {number} lockState - 0 = clear, 1 = set lock
@@ -307,11 +352,11 @@ function buildSetWake(room, time) {
  * @throws {Error} ถ้า lockState ไม่ใช่ 0 หรือ 1
  */
 function buildSetLock(room, lockState) {
-  const numb = normalizeRoom(room);
+  const ext = getExtensionForRoom(room);
   if (lockState !== 0 && lockState !== 1) {
     throw new Error(`Invalid lock state: ${lockState} — must be 0 (clear) or 1 (set)`);
   }
-  return `${CMD_PREFIX}LOCK${numb}=${lockState}${TERMINATOR}`;
+  return `${CMD_PREFIX}LOCK${ext}=${lockState}${TERMINATOR}`;
 }
 
 // ─── Response Parser ──────────────────────────────────────────────────────────
@@ -407,16 +452,38 @@ function parseResponse(rawString) {
     return result;
   }
 
-  // ── ROOM{1-4digits}={status} ──
-  const roomMatch = body.match(/^ROOM(\d{1,4})=(\d*)$/);
-  if (roomMatch) {
-    result.type = RESPONSE_TYPE.ROOM;
-    result.room = roomMatch[1];
-    result.value = roomMatch[2] || null;
+  // ── Multi-line PWER response (e.g. from PWER=ALL) ──
+  if (body.includes('PWER') && body.includes('ACKW')) {
+    result.type = RESPONSE_TYPE.POWER;
+    result.rooms = {};
+    const matches = body.matchAll(/PWER(\d{1,4})=(on|off)/ig);
+    for (const match of matches) {
+      result.rooms[match[1]] = match[2].toLowerCase() === 'on' ? 'ON' : 'OFF';
+    }
     return result;
   }
 
-  // ── PWER{1-4digits}={on|off ...} (Legacy fallback if needed) ──
+  // ── Multi-line RDSS response (e.g. from RDSS=ALL) ──
+  if (body.includes('RDSS') && body.includes('ACKW')) {
+    result.type = RESPONSE_TYPE.ROOM;
+    result.rooms = {};
+    const matches = body.matchAll(/RDSS(\d{1,4})=(\d+)/ig);
+    for (const match of matches) {
+      result.rooms[match[1]] = match[2];
+    }
+    return result;
+  }
+
+  // ── ROOM{1-4digits}={name/status} ──
+  const roomMatch = body.match(/^ROOM(\d{1,4})=(.*)$/);
+  if (roomMatch) {
+    result.type = RESPONSE_TYPE.ROOM;
+    result.room = roomMatch[1];
+    result.value = roomMatch[2] === '0' ? '' : roomMatch[2] || '';
+    return result;
+  }
+
+  // ── PWER{1-4digits}={on|off ...} (Legacy/Single PWER response) ──
   const pwerMatch = body.match(/^PWER(\d{1,4})=(on|off)(?:\s.*)?$/i);
   if (pwerMatch) {
     result.type = RESPONSE_TYPE.POWER;
@@ -433,6 +500,7 @@ function parseResponse(rawString) {
     result.value = nameMatch[2] || '';
     return result;
   }
+
 
   // ── WAKE{1-4digits}={hhmm} ──
   const wakeMatch = body.match(/^WAKE(\d{1,4})=(.*)$/);

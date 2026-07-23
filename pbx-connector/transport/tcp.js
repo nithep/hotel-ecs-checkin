@@ -75,6 +75,9 @@ class TcpTransport extends EventEmitter {
     /** @private {NodeJS.Timeout|null} */
     this._pendingTimer = null;
 
+    /** @private {boolean} */
+    this._pendingIsMultiLine = false;
+
     /** @private {string} */
     this._host = '';
 
@@ -201,10 +204,11 @@ class TcpTransport extends EventEmitter {
    *
    * @param {string} command - Raw command string (ต้องรวม TERMINATOR แล้ว)
    * @param {number} [timeout] - Override timeout สำหรับคำสั่งนี้ (ms)
+   * @param {boolean} [isMultiLine=false] - กำหนดว่าต้องการสืบค้นแบบหลายบรรทัดจนเจอ ==ACKW หรือไม่
    * @returns {Promise<string>} Raw response string จาก PBX
    * @throws {Error} เมื่อไม่ได้เชื่อมต่อ, timeout, หรือ socket error
    */
-  send(command, timeout) {
+  send(command, timeout, isMultiLine = false) {
     return new Promise((resolve, reject) => {
       if (!this._connected || !this._socket) {
         reject(new Error('TCP transport is not connected'));
@@ -217,6 +221,8 @@ class TcpTransport extends EventEmitter {
       }
 
       const cmdTimeout = timeout || this._timeout;
+
+      this._pendingIsMultiLine = isMultiLine;
 
       // Set up pending response handler
       this._pendingResolve = resolve;
@@ -299,7 +305,7 @@ class TcpTransport extends EventEmitter {
    * @private
    * @param {Buffer} chunk - Raw data chunk จาก socket
    */
-  _onData(chunk) {
+   _onData(chunk) {
     this._buffer += chunk.toString('ascii');
 
     /**
@@ -309,7 +315,32 @@ class TcpTransport extends EventEmitter {
      */
     this.emit('data', chunk.toString('ascii'));
 
-    // ตรวจหา TERMINATOR ใน buffer
+    if (this._pendingIsMultiLine) {
+      // สำหรับคำสั่ง Multi-line (เช่น PWER=ALL) เราจะรอจนกว่าจะพบ ==ACKW\r\n หรือ ==NACK\r\n
+      const ackwIdx = this._buffer.indexOf(`==ACKW${TERMINATOR}`);
+      const nackIdx = this._buffer.indexOf(`==NACK${TERMINATOR}`);
+      
+      if (ackwIdx !== -1) {
+        const response = this._buffer.substring(0, ackwIdx + `==ACKW${TERMINATOR}`.length);
+        this._buffer = this._buffer.substring(ackwIdx + `==ACKW${TERMINATOR}`.length);
+        if (this._pendingResolve) {
+          const resolve = this._pendingResolve;
+          this._clearPending();
+          resolve(response);
+        }
+      } else if (nackIdx !== -1) {
+        const response = this._buffer.substring(0, nackIdx + `==NACK${TERMINATOR}`.length);
+        this._buffer = this._buffer.substring(nackIdx + `==NACK${TERMINATOR}`.length);
+        if (this._pendingResolve) {
+          const resolve = this._pendingResolve;
+          this._clearPending();
+          resolve(response);
+        }
+      }
+      return;
+    }
+
+    // ตรวจหา TERMINATOR ใน buffer สำหรับคำสั่งบรรทัดเดี่ยวปกติ
     let terminatorIdx = this._buffer.indexOf(TERMINATOR);
 
     while (terminatorIdx !== -1) {
@@ -341,6 +372,7 @@ class TcpTransport extends EventEmitter {
     }
     this._pendingResolve = null;
     this._pendingReject = null;
+    this._pendingIsMultiLine = false;
   }
 }
 

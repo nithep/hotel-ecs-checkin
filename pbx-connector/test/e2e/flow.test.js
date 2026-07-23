@@ -7,6 +7,7 @@ const simulator = require('../../simulator/pbx-simulator');
 describe('E2E Full Flow Test (API → PBX Simulator)', () => {
   let pbxServer;
   let backendProcess;
+  let token;
   const PBX_PORT = 10003;
   const API_PORT = 3001;
   const API_URL = `http://127.0.0.1:${API_PORT}`;
@@ -40,7 +41,7 @@ describe('E2E Full Flow Test (API → PBX Simulator)', () => {
       // รอให้ Express Server โหลดและรันเสร็จสมบูรณ์
       setTimeout(() => {
         done();
-      }, 2000);
+      }, 6000);
     });
   });
 
@@ -63,17 +64,24 @@ describe('E2E Full Flow Test (API → PBX Simulator)', () => {
   });
 
   test('ควรสามารถสั่ง Check-in ผ่าน API และส่งต่อไปยัง Simulator และอัปเดต DB ได้สำเร็จ', async () => {
-    // 1. เรียก API Check-in ห้อง 101
+    // 1. เรียก API Check-in ห้อง 101 (ส่ง pdpaConsent ไปด้วย)
     const checkinResponse = await fetch(`${API_URL}/api/checkin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roomNumber: 101, guestName: 'E2EGuest' })
+      body: JSON.stringify({
+        roomNumber: 101,
+        guestName: 'E2EGuest',
+        pdpaConsent: { privacyPolicyAccepted: true }
+      })
     });
     
     expect(checkinResponse.status).toBe(200);
     const checkinData = await checkinResponse.json();
     expect(checkinData.message).toBe('Check-in successful');
     expect(checkinData.hardware_status.success).toBe(true);
+    
+    // บันทึก token ไว้ใช้เช็คเอาท์
+    token = checkinData.token;
 
     // ยืนยันว่าฝั่ง Simulator ได้รับคำสั่งเปิดไฟ (status=1) และตั้งชื่อแขกแล้ว
     expect(simulator.rooms['101'].status).toBe(1);
@@ -91,10 +99,13 @@ describe('E2E Full Flow Test (API → PBX Simulator)', () => {
   });
 
   test('ควรสามารถสั่ง Check-out ผ่าน API เพื่อตัดไฟและอัปเดต DB ได้สำเร็จ', async () => {
-    // 1. เรียก API Check-out ห้อง 101
+    // 1. เรียก API Check-out ห้อง 101 (แนบ token ใน header)
     const checkoutResponse = await fetch(`${API_URL}/api/checkout`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
       body: JSON.stringify({ roomNumber: 101 })
     });
 

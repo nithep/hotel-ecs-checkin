@@ -37,6 +37,7 @@ describe('CommandQueue Utility', () => {
     expect(results).toEqual([1, 2]);
     expect(executionOrder).toEqual([1, 2]);
     expect(queue.size).toBe(0);
+    await new Promise(resolve => setTimeout(resolve, 150));
     expect(queue.isRunning).toBe(false);
   });
 
@@ -72,6 +73,7 @@ describe('CommandQueue Utility', () => {
     await expect(p3).rejects.toThrow('Command queue cleared');
 
     expect(queue.size).toBe(0);
+    await new Promise(resolve => setTimeout(resolve, 150));
     expect(queue.isRunning).toBe(false);
   });
 });

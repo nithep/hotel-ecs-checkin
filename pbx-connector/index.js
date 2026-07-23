@@ -559,7 +559,7 @@ class PbxConnector extends EventEmitter {
 
       const normalizedRoom = protocol.normalizeRoom(room);
       const cmd = protocol.buildGetRoom(room);
-      const resp = await this._sendWithRetry(cmd);
+      const resp = await this._sendWithRetry(cmd, true); // true = isMultiLine
       const parsed = protocol.parseResponse(resp);
 
       if (parsed.error) {
@@ -567,17 +567,30 @@ class PbxConnector extends EventEmitter {
       }
 
       let statusCode;
-      if (parsed.type === protocol.RESPONSE_TYPE.POWER) {
+      let statusLabel = 'UNKNOWN';
+
+      if (parsed.rooms) {
+        // แกะสถานะจากผลลัพธ์แบบกลุ่ม
+        const cleanRoom = String(room).replace(/^0+/, '') || '0';
+        if (!parsed.rooms[cleanRoom]) {
+          throw new Error(`Get room status failed for ${normalizedRoom}: Room does not exist in PBX response`);
+        }
+        const pState = parsed.rooms[cleanRoom];
+        statusCode = pState === 'ON' ? protocol.ROOM_STATUS.ON : protocol.ROOM_STATUS.OFF;
+        statusLabel = pState;
+      } else if (parsed.type === protocol.RESPONSE_TYPE.POWER) {
         statusCode = parsed.value === 'on' ? protocol.ROOM_STATUS.ON : protocol.ROOM_STATUS.OFF;
+        statusLabel = protocol.ROOM_STATUS_LABEL[statusCode] || 'UNKNOWN';
       } else {
         statusCode = parseInt(parsed.value, 10);
+        statusLabel = protocol.ROOM_STATUS_LABEL[statusCode] || 'UNKNOWN';
       }
 
       return {
         room: normalizedRoom,
         status: statusCode,
         statusCode,
-        statusLabel: protocol.ROOM_STATUS_LABEL[statusCode] || 'UNKNOWN',
+        statusLabel,
       };
     });
   }
@@ -792,7 +805,7 @@ class PbxConnector extends EventEmitter {
    * @returns {Promise<string>} Raw response
    * @throws {Error} เมื่อล้มเหลวหลัง retry ทั้งหมด
    */
-  async _sendWithRetry(command) {
+  async _sendWithRetry(command, isMultiLine = false) {
     const maxAttempts = this.config.retryAttempts;
     const baseDelay = this.config.retryBaseDelay;
     let lastError;
@@ -807,7 +820,7 @@ class PbxConnector extends EventEmitter {
           await this._sleep(delay);
         }
 
-        const response = await this._transport.send(command);
+        const response = await this._transport.send(command, undefined, isMultiLine);
         this._lastActivityTime = Date.now();
         return response;
       } catch (err) {

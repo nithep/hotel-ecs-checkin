@@ -11,7 +11,7 @@ describe('Phonik PBX Protocol Fixture Regression Tests', () => {
       // ทดสอบการสร้างคำสั่งจากข้อมูลใน fixture
       let generatedCmd;
       if (item.command.includes('PWER') && item.command.includes('=')) {
-        const valMatch = item.command.match(/PWER\d{4}=(\d)?/);
+        const valMatch = item.command.match(/PWER\d{1,4}=(\d)?/);
         if (valMatch && valMatch[1] !== undefined) {
           // CMD-ON หรือ CMD-OFF
           const status = parseInt(valMatch[1], 10);
@@ -20,8 +20,8 @@ describe('Phonik PBX Protocol Fixture Regression Tests', () => {
           // CMD-STAT
           generatedCmd = protocol.buildGetRoom(item.room);
         }
-      } else if (item.command.includes('NAME')) {
-        const nameMatch = item.command.match(/NAME\d{4}=(.+)/);
+      } else if (item.command.includes('ROOM')) {
+        const nameMatch = item.command.match(/ROOM\d{4}=(.+)/);
         if (nameMatch) {
           generatedCmd = protocol.buildSetName(item.room, nameMatch[1]);
         }
@@ -43,11 +43,17 @@ describe('Phonik PBX Protocol Fixture Regression Tests', () => {
       } else {
         expect(parsed.error).toBe(false);
         if (item.expectedResponse.includes('PWER')) {
-          const valMatch = item.expectedResponse.match(/PWER\d{4}=(on|off|\d)/i);
-          expect(parsed.value).toBe(valMatch[1].toLowerCase());
-        } else if (item.expectedResponse.includes('NAME')) {
-          const nameMatch = item.expectedResponse.match(/NAME\d{4}=(.+)/);
-          expect(parsed.value).toBe(nameMatch[1]);
+          if (parsed.rooms) {
+            expect(parsed.rooms[item.room]).toBeDefined();
+          } else {
+            const valMatch = item.expectedResponse.match(/PWER\d{1,4}=(on|off|\d)/i);
+            expect(parsed.value).toBe(valMatch[1].toLowerCase());
+          }
+        } else if (item.expectedResponse.includes('ROOM')) {
+          const nameMatch = item.expectedResponse.match(/ROOM\d{4}=(.+)/);
+          if (nameMatch) {
+            expect(parsed.value).toBe(nameMatch[1]);
+          }
         }
       }
     }

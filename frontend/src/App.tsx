@@ -13,6 +13,7 @@ import CheckIn from './pages/CheckIn';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Unauthorized from './components/Unauthorized';
+import GuestBinding from './pages/GuestBinding';
 
 const ProtectedRoute = ({ allowedRoles, children }: { allowedRoles: string[], children: ReactNode }) => {
   const { role, token } = useAuth();
@@ -66,6 +67,9 @@ function App() {
           {/* Login Page */}
           <Route path="/login" element={<Login />} />
 
+          {/* Guest Binding Page (No Auth Required) */}
+          <Route path="/bind" element={<GuestBinding />} />
+
           {/* Unauthorized Page */}
           <Route path="/unauthorized" element={<Unauthorized />} />
 
@@ -74,11 +78,7 @@ function App() {
           <Route path="/scan" element={<Scan />} />
 
           {/* Guest Role Route */}
-          <Route path="/guest" element={
-            <ProtectedRoute allowedRoles={['guest', 'admin', 'staff']}>
-              <GuestView />
-            </ProtectedRoute>
-          } />
+          <Route path="/guest" element={<GuestView />} />
 
           {/* Staff Role Routes */}
           <Route path="/staff" element={

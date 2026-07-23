@@ -315,11 +315,28 @@ function processCommand(rawCommand) {
         const pass = body.substring(5);
         return { response: `==PASS=${pass}`, shouldClose: false };
     }
-    if (body === 'RDSS=ALL') {
-        return { response: '==RDSS=ALL', shouldClose: false };
-    }
     if (body === 'PWER=ALL') {
-        return { response: '==PWER=ALL', shouldClose: false };
+        let resp = '';
+        VALID_ROOMS.forEach(r => {
+            const statusStr = rooms[r].status === 1 ? 'on 21/07/26 13:37:46 - 22/07/26 01:00:00' : 'off';
+            resp += `==PWER${r}=${statusStr}\r\n`;
+        });
+        for (let i = 0; i < 10; i++) {
+            resp += `==PWER=off\r\n`;
+        }
+        resp += `==ACKW`;
+        return { response: resp, shouldClose: false };
+    }
+    if (body === 'RDSS=ALL') {
+        let resp = '';
+        for (let i = 1001; i <= 1008; i++) {
+            resp += `==RDSS${i}=0\r\n`;
+        }
+        for (let i = 1017; i <= 1024; i++) {
+            resp += `==RDSS${i}=0\r\n`;
+        }
+        resp += `==ACKW`;
+        return { response: resp, shouldClose: false };
     }
     if (body === 'EXTA=ALL') {
         return { response: '==EXTA=ALL', shouldClose: false };
@@ -357,12 +374,12 @@ function processCommand(rawCommand) {
         return { response: '==STOP', shouldClose: true };
     }
 
-    // 1. Power Control (ROOM) -> เปลี่ยนจาก PWER เป็น ROOM ตาม CCH2
-    // ..ROOM{room}=1 (ON), ..ROOM{room}=0 (OFF), ..ROOM{room}= (GET)
-    const roomMatch = body.match(/^ROOM(\d{3,4})=(\d?)$/);
-    if (roomMatch) {
-      const roomNum = normalizeRoomNum(roomMatch[1]);
-      const value = roomMatch[2];
+    // 1. Power Control (PWER)
+    // ..PWER{room}=1 (ON), ..PWER{room}=0 (OFF)
+    const pwerMatch = body.match(/^PWER(\d{3,4})=(\d?)$/);
+    if (pwerMatch) {
+        const roomNum = normalizeRoomNum(pwerMatch[1]);
+        const value = pwerMatch[2];
 
         // Validate room exists
         if (!rooms[roomNum]) {
@@ -377,14 +394,11 @@ function processCommand(rawCommand) {
         }
 
         if (value === '') {
-            // READ: return current status
-            const statusStr = rooms[roomNum].status === 1 ? '1' : '0';
-            return {
-                response: `==ROOM${roomNum}=${statusStr}`,
-                shouldClose: false,
-            };
+            // READ: individual status query is NOT supported on the real PBX (returns NACK)
+            stats.totalNacks++;
+            return { response: `==NACK=>PWER${pwerMatch[1]}=`, shouldClose: false };
         } else {
-            // SET: update status (0=OFF, >=1 = ON days)
+            // SET: update status (0=OFF, 1 = ON)
             const statusVal = parseInt(value, 10);
             if (statusVal < 0) {
                 stats.totalNacks++;
@@ -399,19 +413,25 @@ function processCommand(rawCommand) {
             } else {
                 rooms[roomNum].status = 1;
                 return {
-                    response: `==PWER${roomNum}=on 14/07/26 18:52:33 - 15/07/26 01:00:00`,
+                    response: `==PWER${roomNum}=on 21/07/26 13:37:46 - 22/07/26 01:00:00`,
                     shouldClose: false,
                 };
             }
         }
     }
 
-    // ── NAME command ──
-    // Patterns: NAMEnnn=name (set) or NAMEnnn= (read)
-    const nameMatch = body.match(/^NAME(\d{3,4})=(.*)$/);
+    // ── ROOM command (Guest Name on Extension) ──
+    // Patterns: ROOMext=name (set) or ROOMext= (read)
+    const nameMatch = body.match(/^ROOM(\d{3,4})=(.*)$/);
     if (nameMatch) {
-        const roomNum = normalizeRoomNum(nameMatch[1]);
-        const name    = nameMatch[2];
+        const ext = nameMatch[1];
+        // Map extension (1017-1022) back to room number (101-106)
+        let roomNum = normalizeRoomNum(ext);
+        const extNum = parseInt(ext, 10);
+        if (extNum >= 1017 && extNum <= 1022) {
+            roomNum = String(extNum - 916); // 1017 -> 101
+        }
+        const name = nameMatch[2];
 
         if (!rooms[roomNum]) {
             stats.totalNacks++;
@@ -424,16 +444,17 @@ function processCommand(rawCommand) {
         }
 
         if (name === '') {
-            // READ: return current guest name
+            // READ: return current guest name (defaults to '0' if empty like real PBX)
+            const guestName = rooms[roomNum].name || '0';
             return {
-                response: `==NAME${roomNum}=${rooms[roomNum].name}`,
+                response: `==ROOM${ext}=${guestName}`,
                 shouldClose: false,
             };
         } else {
             // SET: truncate to 16 characters (Phonik limit)
-            rooms[roomNum].name = name.substring(0, 16);
+            rooms[roomNum].name = name.trim().substring(0, 16);
             return {
-                response: `==NAME${roomNum}=${rooms[roomNum].name}`,
+                response: `==ROOM${ext}=${rooms[roomNum].name}`,
                 shouldClose: false,
             };
         }
@@ -443,7 +464,12 @@ function processCommand(rawCommand) {
     // Patterns: WAKEnnn=hhmm (set) or WAKEnnn=0 (cancel) or WAKEnnn= (read)
     const wakeMatch = body.match(/^WAKE(\d{3,4})=(.*)$/);
     if (wakeMatch) {
-        const roomNum = normalizeRoomNum(wakeMatch[1]);
+        const ext = wakeMatch[1];
+        let roomNum = normalizeRoomNum(ext);
+        const extNum = parseInt(ext, 10);
+        if (extNum >= 1017 && extNum <= 1022) {
+            roomNum = String(extNum - 916);
+        }
         const value   = wakeMatch[2];
 
         if (!rooms[roomNum]) {
@@ -459,14 +485,14 @@ function processCommand(rawCommand) {
         if (value === '') {
             // READ: return current wakeup setting
             return {
-                response: `==WAKE${roomNum}=${rooms[roomNum].wake}`,
+                response: `==WAKE${ext}=${rooms[roomNum].wake}`,
                 shouldClose: false,
             };
         } else if (value === '0') {
             // CANCEL wakeup
             rooms[roomNum].wake = '0';
             return {
-                response: `==WAKE${roomNum}=0`,
+                response: `==WAKE${ext}=0`,
                 shouldClose: false,
             };
         } else {
@@ -477,7 +503,7 @@ function processCommand(rawCommand) {
                 if (hh >= 0 && hh <= 23 && mm >= 0 && mm <= 59) {
                     rooms[roomNum].wake = value;
                     return {
-                        response: `==WAKE${roomNum}=${value}`,
+                        response: `==WAKE${ext}=${value}`,
                         shouldClose: false,
                     };
                 }
@@ -491,7 +517,12 @@ function processCommand(rawCommand) {
     // Pattern: LOCKnnn=k
     const lockMatch = body.match(/^LOCK(\d{3,4})=(\d?)$/);
     if (lockMatch) {
-        const roomNum = normalizeRoomNum(lockMatch[1]);
+        const ext = lockMatch[1];
+        let roomNum = normalizeRoomNum(ext);
+        const extNum = parseInt(ext, 10);
+        if (extNum >= 1017 && extNum <= 1022) {
+            roomNum = String(extNum - 916);
+        }
         const value   = lockMatch[2];
 
         if (!rooms[roomNum]) {
@@ -507,16 +538,20 @@ function processCommand(rawCommand) {
         if (value === '') {
             // READ
             return {
-                response: `==LOCK${roomNum}=${rooms[roomNum].lock}`,
+                response: `==LOCK${ext}=${rooms[roomNum].lock}`,
                 shouldClose: false,
             };
         } else {
             const lockVal = parseInt(value, 10);
-            rooms[roomNum].lock = lockVal;
-            return {
-                response: `==LOCK${roomNum}=${lockVal}`,
-                shouldClose: false,
-            };
+            if (lockVal === 0 || lockVal === 1) {
+                rooms[roomNum].lock = lockVal;
+                return {
+                    response: `==LOCK${ext}=${lockVal}`,
+                    shouldClose: false,
+                };
+            }
+            stats.totalNacks++;
+            return { response: '==NACK', shouldClose: false };
         }
     }
 

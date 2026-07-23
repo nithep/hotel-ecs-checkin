@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth, type UserRole } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { LogIn, Lock, CheckCircle2 } from 'lucide-react';
@@ -8,8 +8,20 @@ const Login = () => {
   const [pin, setPin] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { setRole, setToken } = useAuth();
+  const { role, setRole, token, setToken } = useAuth();
   const navigate = useNavigate();
+
+  // Clear inputs and check for existing token on mount
+  useEffect(() => {
+    setPin('');
+    if (token) {
+      if (role === 'admin') {
+        navigate('/admin', { replace: true });
+      } else if (role === 'staff') {
+        navigate('/staff/dashboard', { replace: true });
+      }
+    }
+  }, [token, role, navigate]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();

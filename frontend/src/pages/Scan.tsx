@@ -255,7 +255,7 @@ const Scan = () => {
         ? { roomNumber: selectedRoom, guestName, pdpaConsent: { privacyPolicyAccepted: true, acceptedAt: new Date().toISOString() } }
         : { roomNumber: selectedRoom };
 
-      const token = localStorage.getItem('auth_token');
+      const token = localStorage.getItem(`hotel_guest_token_${selectedRoom}`);
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -265,7 +265,19 @@ const Scan = () => {
       if (response.status === 202 && data.reason === 'APPROVAL_REQUIRED') {
         setStatus('success');
       } else if (response.ok && (data.hardware_status?.success || data.success || data.message)) {
-        if (data.token) { localStorage.setItem('auth_token', data.token); localStorage.setItem('user_role', 'guest'); }
+        if (data.token) {
+          localStorage.setItem(`hotel_guest_token_${selectedRoom}`, data.token);
+          localStorage.setItem('user_role', 'guest');
+          const checkoutDate = data.checkoutDate || data.checkout_date;
+          if (checkoutDate) {
+            localStorage.setItem(`hotel_guest_checkout_${selectedRoom}`, checkoutDate);
+          } else {
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            tomorrow.setHours(12, 0, 0, 0);
+            localStorage.setItem(`hotel_guest_checkout_${selectedRoom}`, tomorrow.toISOString());
+          }
+        }
         setStatus('success');
       } else {
         setErrorMsg(data.error || 'เกิดข้อผิดพลาดในการสั่งการระบบไฟ');

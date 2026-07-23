@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 
-export type UserRole = 'admin' | 'staff' | 'guest';
+export type UserRole = 'admin' | 'staff' | 'guest' | 'owner' | 'front_desk';
 
 interface AuthContextType {
   role: UserRole;
@@ -42,6 +42,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const logout = () => {
     setToken(null);
+    setRole('guest');
+    localStorage.clear();
+    sessionStorage.clear();
+    // Redirect to login page to prevent history traversal cache
+    window.location.replace('/login');
   };
 
   return (

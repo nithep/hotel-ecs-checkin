@@ -161,6 +161,20 @@ export const api = {
   forceControl: (roomNumber: string, action: 'ON' | 'OFF', source?: string) => 
     apiClient.post('/rooms/control', { roomNumber, action, source }),
   
+  // Bookings
+  createBooking: (data: {
+    roomId: number;
+    guestName: string;
+    checkinDate: string;
+    checkoutDate: string;
+  }) => apiClient.post('/admin/bookings', data),
+  getBindingLink: (bookingId: number) => apiClient.get(`/admin/bookings/${bookingId}/binding`),
+  getBookingInfo: (token: string) => apiClient.get(`/bookings/info?token=${token}`),
+  bindBooking: (data: { bindingToken: string; lineId?: string; sessionId?: string }) =>
+    apiClient.post('/bookings/bind', data),
+
+
+  
   // Check-in/Check-out
   checkIn: (data: {
     roomNumber: string;

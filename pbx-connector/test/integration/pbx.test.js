@@ -76,7 +76,7 @@ describe('PBX Integration Test (TCP Mode)', () => {
   });
 
   test('ควรคืนค่า Error (NACK) เมื่อสั่งการห้องที่ไม่มีจริง', async () => {
-    await expect(connector.getRoomStatus(999)).rejects.toThrow('Get room status failed for 999');
+    await expect(connector.getRoomStatus(999)).rejects.toThrow('Get room status failed for 0999');
   });
 
   test('ควรส่งสัญญาณ Ping (Heartbeat) สำเร็จ', async () => {

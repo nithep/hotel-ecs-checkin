@@ -81,7 +81,25 @@ const PowerToggle = ({
 // ─── Main GuestView ───────────────────────────────────────────────────────────
 const GuestView: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const roomNumber = searchParams.get('room');
+  const rawRoom = searchParams.get('room');
+  
+  // Extract clean room number if it is formatted as a full URL
+  const getCleanRoom = (roomVal: string | null): string => {
+    if (!roomVal) return '';
+    const trimmed = roomVal.trim();
+    if (trimmed.startsWith('http') || trimmed.includes('?')) {
+      try {
+        const url = new URL(trimmed);
+        return url.searchParams.get('room') || trimmed;
+      } catch {
+        const match = trimmed.match(/[?&]room=(\d+)/);
+        return match ? match[1] : trimmed;
+      }
+    }
+    return trimmed;
+  };
+  
+  const roomNumber = getCleanRoom(rawRoom);
 
   const [status, setStatus] = useState<GuestStatus>('loading');
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -105,7 +123,7 @@ const GuestView: React.FC = () => {
           const p = await liff.getProfile();
           setProfile({ displayName: p.displayName, pictureUrl: p.pictureUrl, userId: p.userId });
           // Check existing session
-          const token = localStorage.getItem(`guest_token_${roomNumber}`);
+          const token = localStorage.getItem(`hotel_hotel_guest_token_${roomNumber}`);
           setStatus(token ? 'checked-in' : 'pre-checkin');
           if (token) { fetchRoomStatus(); startCountdown(); }
         } else {
@@ -133,12 +151,12 @@ const GuestView: React.FC = () => {
 
   const startCountdown = useCallback(() => {
     const tick = () => {
-      const checkoutStr = localStorage.getItem(`guest_checkout_${roomNumber}`);
+      const checkoutStr = localStorage.getItem(`hotel_hotel_guest_checkout_${roomNumber}`);
       if (!checkoutStr) return;
       const diff = new Date(checkoutStr).getTime() - Date.now();
       if (diff <= 0) {
-        localStorage.removeItem(`guest_token_${roomNumber}`);
-        localStorage.removeItem(`guest_checkout_${roomNumber}`);
+        localStorage.removeItem(`hotel_hotel_guest_token_${roomNumber}`);
+        localStorage.removeItem(`hotel_hotel_guest_checkout_${roomNumber}`);
         setStatus('pre-checkin');
         showError('สิทธิ์ควบคุมห้องพักหมดอายุแล้ว');
       } else {
@@ -174,9 +192,9 @@ const GuestView: React.FC = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || data.error || 'Check-in failed');
       if (data.token) {
-        localStorage.setItem(`guest_token_${roomNumber}`, data.token);
-        const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1); tomorrow.setHours(12, 0, 0, 0);
-        localStorage.setItem(`guest_checkout_${roomNumber}`, tomorrow.toISOString());
+        localStorage.setItem(`hotel_hotel_guest_token_${roomNumber}`, data.token);
+        const checkoutDate = data.checkoutDate || (() => { const t = new Date(); t.setDate(t.getDate() + 1); t.setHours(12,0,0,0); return t.toISOString(); })();
+        localStorage.setItem(`hotel_hotel_guest_checkout_${roomNumber}`, checkoutDate);
         setRoomPower(true);
         startCountdown();
       }
@@ -190,7 +208,7 @@ const GuestView: React.FC = () => {
     if (!roomNumber) return;
     setActionLoading(true); setError(null);
     try {
-      const token = localStorage.getItem(`guest_token_${roomNumber}`);
+      const token = localStorage.getItem(`hotel_hotel_guest_token_${roomNumber}`);
       const apiUrl = import.meta.env.VITE_API_URL || '';
       const res = await fetch(`${apiUrl}/api/checkout`, {
         method: 'POST',
@@ -198,8 +216,8 @@ const GuestView: React.FC = () => {
         body: JSON.stringify({ roomNumber }),
       });
       if (!res.ok) { const d = await res.json(); throw new Error(d.message || d.error || 'Checkout failed'); }
-      localStorage.removeItem(`guest_token_${roomNumber}`);
-      localStorage.removeItem(`guest_checkout_${roomNumber}`);
+      localStorage.removeItem(`hotel_hotel_guest_token_${roomNumber}`);
+      localStorage.removeItem(`hotel_hotel_guest_checkout_${roomNumber}`);
       setStatus('pre-checkin');
       setRoomPower(false);
     } catch (e: any) {
@@ -210,7 +228,7 @@ const GuestView: React.FC = () => {
   const handleTogglePower = async () => {
     if (!roomNumber) return;
     setActionLoading(true); setError(null);
-    const token = localStorage.getItem(`guest_token_${roomNumber}`);
+    const token = localStorage.getItem(`hotel_hotel_guest_token_${roomNumber}`);
     try {
       const res = await fetch('/api/rooms/guest-control', {
         method: 'POST',

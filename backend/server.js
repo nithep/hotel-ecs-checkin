@@ -482,6 +482,115 @@ app.get('/api/rooms', (req, res) => {
     });
 });
 
+// ─── Booking Management & Identity Binding ────────────────────────────────
+app.get('/api/admin/bookings', verifyStaffToken, (req, res) => {
+    db.getAllBookings((err, bookings) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ success: true, bookings });
+    });
+});
+
+app.post('/api/admin/bookings', verifyStaffToken, (req, res) => {
+    const { roomId, guestName, checkinDate, checkoutDate } = req.body;
+    if (!roomId || !guestName) {
+        return res.status(400).json({ error: 'roomId and guestName are required' });
+    }
+    
+    db.createBooking({ roomId, guestName, checkinDate, checkoutDate }, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        res.json({ 
+            success: true, 
+            bookingId: result.id, 
+            bindingToken: result.bindingToken,
+            message: 'Booking created successfully' 
+        });
+    });
+});
+
+app.get('/api/admin/bookings/:id/binding', verifyStaffToken, (req, res) => {
+    const bookingId = req.params.id;
+    db.getAllBookings((err, bookings) => {
+        if (err) return res.status(500).json({ error: err.message });
+        const booking = bookings.find(b => String(b.id) === String(bookingId));
+        if (!booking) return res.status(404).json({ error: 'Booking not found' });
+        
+        // Construct real working URL dynamically based on Request Host / Domain or LIFF App URL
+        let bindingUrl;
+        if (process.env.LIFF_APP_URL && !process.env.LIFF_APP_URL.includes('your-liff-id')) {
+            bindingUrl = `${process.env.LIFF_APP_URL}?binding_token=${booking.binding_token}`;
+        } else {
+            const host = req.get('host') || '192.168.1.94:3000';
+            const protocol = req.get('x-forwarded-proto') || req.protocol || 'http';
+            const baseUrl = process.env.PUBLIC_URL || `${protocol}://${host}`;
+            bindingUrl = `${baseUrl}/bind?binding_token=${booking.binding_token}`;
+        }
+        
+        res.json({
+            success: true,
+            bindingToken: booking.binding_token,
+            bindingUrl: bindingUrl,
+            status: booking.status
+        });
+    });
+});
+
+app.get('/api/bookings/info', (req, res) => {
+    const { token } = req.query;
+    if (!token) return res.status(400).json({ error: 'token is required' });
+
+    db.getBookingByToken(token, (err, booking) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!booking) return res.status(404).json({ error: 'Invalid or expired binding token' });
+        
+        res.json({
+            success: true,
+            roomNumber: booking.room_id,
+            guestName: booking.guest_name,
+            checkinDate: booking.checkin_date,
+            checkoutDate: booking.checkout_date,
+            status: booking.status
+        });
+    });
+});
+
+app.post('/api/bookings/bind', (req, res) => {
+    const { bindingToken, lineId, sessionId } = req.body;
+    if (!bindingToken) return res.status(400).json({ error: 'bindingToken is required' });
+    if (!lineId && !sessionId) return res.status(400).json({ error: 'lineId or sessionId is required' });
+
+    db.getBookingByToken(bindingToken, (err, booking) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (!booking) return res.status(404).json({ error: 'Invalid or expired binding token' });
+        if (booking.status !== 'pending_binding') return res.status(400).json({ error: 'Booking is already bound' });
+
+        const identity = lineId ? { type: 'line', value: lineId } : { type: 'session', value: sessionId };
+        
+        db.bindBooking(booking.id, identity, async (err, result) => {
+            if (err) return res.status(500).json({ error: err.message });
+            
+            // Execute hardware checkin & turn on room power
+            try {
+                if (pbx) {
+                    await pbx.checkIn(booking.room_id, booking.guest_name);
+                }
+            } catch (pbxErr) {
+                console.error(`[PBX] Failed checkIn during binding for room ${booking.room_id}:`, pbxErr.message);
+            }
+
+            // Sync with DB room state
+            db.updateRoomState(booking.room_id, 'occupied', true, { guestName: booking.guest_name }, (roomErr) => {
+                if (roomErr) console.error(`[DB] Failed to update room ${booking.room_id} state on bind:`, roomErr.message);
+                
+                res.json({ 
+                    success: true, 
+                    message: 'Identity bound and room power activated successfully',
+                    roomId: booking.room_id
+                });
+            });
+        });
+    });
+});
+
 // ─── Check-in (ผ่าน Safety Pipeline) ──────────────────────────────────────
 app.post('/api/checkin', async (req, res) => {
     const { roomNumber, guestName, guestEmail, dryRun, dry_run, days, pdpaConsent } = req.body;
@@ -555,6 +664,7 @@ app.post('/api/checkin', async (req, res) => {
                 trace_id: command.traceId,
                 hardware_status: safetyResult.result,
                 token: guestToken,
+                checkoutDate: checkoutDateTime.toISOString()
             });
         }
 
@@ -619,6 +729,7 @@ app.post('/api/checkin', async (req, res) => {
                 trace_id: command.traceId,
                 hardware_status: safetyResult.result,
                 token: guestToken,
+                checkoutDate: checkoutDateTime.toISOString(),
                 pdpaCompliant: !!consentHash
             });
         });

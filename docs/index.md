@@ -37,6 +37,9 @@ timestamp: "2026-06-28T02:00:00+07:00"
 - [[wiki/milestones-and-testing|milestones-and-testing]] - สรุปการทดสอบจำลองระบบและการทดสอบบน Pi 4
 - [[wiki/system_cost_and_maintenance|ทะเบียนค่าใช้จ่ายและการบำรุงรักษาระบบ]] - รายละเอียดค่าใช้จ่าย กำหนดชำระ และวิธีการแจ้งเตือน
 - [[wiki/google_workspace_integration|คู่มือการบูรณาการ Google Workspace]] - ขั้นตอนการเชื่อมโยงระบบเข้ากับ Google Chat, AppSheet, Calendar และ Gmail
+- [[wiki/youtube_storytelling|youtube_storytelling]]
+- [[wiki/content_draft_google_workspace_and_ascii|content_draft_google_workspace_and_ascii]] - ร่างคอนเทนท์ X, Medium และ Google Dev (Google Workspace Setup & ASCII Art)
+- [[wiki/xai_grok_integration|xai_grok_integration]] - บันทึกการเชื่อมต่อบัญชี SpaceX AI & Grok (admin@nithep.com)
 - [[wiki/troubleshooting|troubleshooting]] - วิธีแก้ไขปัญหาและบันทึกการซ่อมบำรุงระบบ
 
 ## 🧠 การตั้งค่าระบบความรู้ (Knowledge Management)
@@ -68,8 +71,23 @@ timestamp: "2026-06-28T02:00:00+07:00"
 - [[wiki/cloudflare_warp_ncsi_issue|การแก้ไขปัญหา Windows NCSI กับ Cloudflare WARP]]
 - [[wiki/dashboard_network_setup|SOP มาตรฐานการตั้งค่าเครือข่ายและระบบป้องกันปัญหาการชนกันบนเครื่อง Dashboard]]
 - [[wiki/system_monitoring_guide|คู่มือระบบติดตามและรายงานสถานะ Hotel ECS]]
-- [[wiki/core_services_architecture|สถาปัตยกรรมบริการหลักและการแก้ไขปัญหาเชิงลึก (24/7 Core Services)]]
+- [[wiki/gemini-3-6-flash-antigravity|Gemini 3.6 Flash ใน Google Antigravity]]
+- [[wiki/google-workspace-compliance-hipaa|Google Workspace Security Compliance และ HIPAA BAA]]
+- [[wiki/build-in-public-content-strategy|พิมพ์เขียวระบบสื่อสาร 3 ช่องทางหลัก (Build in Public Strategy)]]
+- [[wiki/ARCHITECTURE|ARCHITECTURE - สถาปัตยกรรมระบบ]]
+- [[wiki/CLOUDFLARE_SETUP_SUMMARY|CLOUDFLARE_SETUP_SUMMARY - สรุปการตั้งค่า Cloudflare]]
+- [[wiki/DEPLOYMENT_FIX_SUMMARY_2026-07-21|DEPLOYMENT_FIX_SUMMARY - สรุปการแก้ไขปัญหา Deployment]]
+- [[wiki/DEPLOYMENT_GUIDE_PI|DEPLOYMENT_GUIDE_PI - คู่มือการ Deploy บน Raspberry Pi]]
+- [[wiki/DEPLOYMENT_TESTING_GUIDE|DEPLOYMENT_TESTING_GUIDE - คู่มือการทดสอบ Deployment]]
+- [[wiki/DEPLOYMENT_TROUBLESHOOTING|DEPLOYMENT_TROUBLESHOOTING - การแก้ปัญหาการ Deploy]]
+- [[wiki/HOTFIX_DEPLOYMENT_GUIDE|HOTFIX_DEPLOYMENT_GUIDE - คู่มือการทำ Hotfix Deployment]]
+- [[wiki/QUICK_DEPLOY_REFERENCE|QUICK_DEPLOY_REFERENCE - ข้อมูลอ้างอิงการ Deploy ด่วน]]
+- [[wiki/QUICK_REFERENCE|QUICK_REFERENCE - คู่มืออ้างอิงด่วน]]
+- [[wiki/SECURITY|SECURITY - มาตรฐานความปลอดภัยของระบบ]]
+- [[wiki/SETUP|SETUP - คู่มือการเซ็ตอัประบบเริ่มต้น]]
 
 
 ---
 *บันทึกโดย: Librarian Agent (Antigravity)*
+
+

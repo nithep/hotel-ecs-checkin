@@ -18,7 +18,9 @@ import {
   Power
 } from 'lucide-react';
 import TerminalStatus from '../components/TerminalStatus';
-import { api, auth } from '../lib/api';
+import { api } from '../lib/api';
+import { useAuth } from '../context/AuthContext';
+import BookingModal from '../components/BookingModal';
 
 interface Room {
   id: number;
@@ -96,10 +98,10 @@ const Dashboard = () => {
   const [pbxInfo, setPbxInfo] = useState<{ mode: string; isReady: boolean; details: string } | null>(null);
   
   // Authentication State
-  const [isAuthenticated, setIsAuthenticated] = useState(auth.isAuthenticated());
-  const [pin, setPin] = useState('');
-  const [pinError, setPinError] = useState('');
-  const [role, setRole] = useState(auth.getRole() || '');
+  const { role, token, logout } = useAuth();
+  
+  // Since we use ProtectedRoute, we know we are authenticated if we reach here
+  const isAuthenticated = !!token;
 
   // Modal State for Approval Reason
   const [showReasonModal, setShowReasonModal] = useState(false);
@@ -109,54 +111,15 @@ const Dashboard = () => {
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [alertMessage, setAlertMessage] = useState<{ type: 'success' | 'error' | 'warning', text: string } | null>(null);
 
+  // Booking State
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [selectedRoomForBooking, setSelectedRoomForBooking] = useState<number | null>(null);
 
 
-  const handleKeypadPress = (val: string) => {
-    if (pin.length >= 4) return;
-    setPinError('');
-    const newPin = pin + val;
-    setPin(newPin);
-    if (newPin.length === 4) {
-      verifyPin(newPin);
-    }
-  };
-
-  const handleKeypadClear = () => {
-    setPin('');
-    setPinError('');
-  };
-
-  const handleKeypadBackspace = () => {
-    setPin(pin.slice(0, -1));
-    setPinError('');
-  };
-
-  const verifyPin = async (enteredPin: string) => {
-    try {
-      const response = await api.verifyPin(enteredPin);
-      const data = response.data;
-      
-      auth.setToken(data.token);
-      auth.setRole(data.role);
-      setRole(data.role);
-      setIsAuthenticated(true);
-      setPin('');
-      
-      if (data.role === 'front_desk') {
-        setActiveTab('rooms');
-      }
-    } catch (e: any) {
-      setPinError(e.message || 'รหัส PIN ไม่ถูกต้อง');
-      setPin('');
-    }
-  };
 
   const handleLogout = () => {
-    auth.removeToken();
-    setIsAuthenticated(false);
-    setRole('');
+    logout();
   };
-
   const fetchDiagnostics = async () => {
     try {
       const res = await api.getDiagnostics();
@@ -372,77 +335,7 @@ const Dashboard = () => {
     pending: pendingApprovals.length,
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center min-h-[50vh] sm:min-h-[65vh] pb-6 sm:pb-12 px-2 sm:px-0">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="glass-panel w-full max-w-md p-5 sm:p-8 rounded-2xl sm:rounded-3xl border border-white/10 shadow-2xl relative overflow-hidden space-y-4 sm:space-y-6 bg-slate-900/60 backdrop-blur-xl"
-        >
-          <div className="absolute -top-12 -right-12 w-32 h-32 bg-sky-500/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
-
-          <div className="text-center space-y-2">
-            <div className="inline-flex p-2.5 bg-sky-500/10 text-sky-400 rounded-xl mb-1 border border-sky-500/20">
-              <Lock size={28} />
-            </div>
-            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-100">ความปลอดภัยระบบควบคุม</h2>
-            <p className="text-xs sm:text-sm text-slate-400">กรุณาป้อนรหัส PIN 4 หลัก เพื่อปลดล็อกแผงควบคุมระบบ</p>
-          </div>
-
-          <div className="space-y-3 sm:space-y-4">
-            <div className="flex justify-center gap-3 sm:gap-4 py-1 sm:py-2">
-              {[0, 1, 2, 3].map((idx) => (
-                <div 
-                  key={idx} 
-                  className={`w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full border transition-all duration-150 ${
-                    pin.length > idx 
-                      ? 'bg-sky-400 border-sky-400 shadow-[0_0_10px_rgba(56,189,248,0.8)] scale-110' 
-                      : 'border-slate-700 bg-slate-950'
-                  }`}
-                />
-              ))}
-            </div>
-
-            {pinError && (
-              <p className="text-xs text-rose-400 text-center font-semibold animate-pulse">{pinError}</p>
-            )}
-
-            <div className="grid grid-cols-3 gap-2.5 max-w-[220px] sm:max-w-[240px] mx-auto pt-1 sm:pt-2">
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                <button
-                  key={num}
-                  onClick={() => handleKeypadPress(String(num))}
-                  className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-base sm:text-lg font-bold text-slate-200 transition-all active:scale-90 hover:border-slate-700 flex items-center justify-center"
-                >
-                  {num}
-                </button>
-              ))}
-              <button
-                onClick={handleKeypadClear}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 text-[10px] sm:text-xs font-bold text-rose-400 transition-all active:scale-90 flex items-center justify-center"
-              >
-                Clear
-              </button>
-              <button
-                onClick={() => handleKeypadPress('0')}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-slate-950/60 hover:bg-slate-800/80 border border-slate-800 text-base sm:text-lg font-bold text-slate-200 transition-all active:scale-90 flex items-center justify-center"
-              >
-                0
-              </button>
-              <button
-                onClick={handleKeypadBackspace}
-                className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl sm:rounded-2xl bg-slate-950/40 hover:bg-slate-900/50 border border-slate-800/40 text-xs sm:text-sm font-bold text-slate-400 transition-all active:scale-90 flex items-center justify-center"
-              >
-                ⌫
-              </button>
-            </div>
-          </div>
-        </motion.div>
-      </div>
-    );
-  }
+  // No embedded login screen needed since ProtectedRoute handles it
 
   if (isLoading) {
     return (
@@ -728,6 +621,20 @@ const Dashboard = () => {
                               </button>
                             )}
                           </>
+                        )}
+                        
+                        {/* Create Booking for Vacant Rooms (Staff/Admin) */}
+                        {!isOccupied && (role === 'owner' || role === 'front_desk') && (
+                          <button
+                            onClick={() => {
+                              setSelectedRoomForBooking(room.id);
+                              setIsBookingModalOpen(true);
+                            }}
+                            className="flex items-center justify-center bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 text-[10px] sm:text-xs px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-colors border border-indigo-500/20 font-medium whitespace-nowrap"
+                            title="สร้างการจอง"
+                          >
+                            จองห้อง
+                          </button>
                         )}
                       </div>
                     </div>
@@ -1037,6 +944,21 @@ const Dashboard = () => {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Booking Modal Overlay */}
+      {selectedRoomForBooking && (
+        <BookingModal 
+          isOpen={isBookingModalOpen}
+          roomId={selectedRoomForBooking}
+          onClose={() => {
+            setIsBookingModalOpen(false);
+            setSelectedRoomForBooking(null);
+          }}
+          onSuccess={() => {
+            fetchRooms();
+          }}
+        />
+      )}
 
       {/* System Console */}
       <div className="mt-12">

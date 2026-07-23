@@ -24,6 +24,19 @@ function initDb() {
             checkout_date TEXT
         )`);
 
+        db.run(`CREATE TABLE IF NOT EXISTS bookings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            room_id INTEGER NOT NULL,
+            guest_name TEXT NOT NULL,
+            status TEXT DEFAULT 'pending_binding',
+            binding_token TEXT UNIQUE,
+            guest_line_id TEXT,
+            guest_session_id TEXT,
+            checkin_date TEXT,
+            checkout_date TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )`);
+
         // Check and migrate columns if table already existed but is missing PDPA columns
         db.all("PRAGMA table_info(rooms)", (err, columns) => {
             if (err) {
@@ -123,9 +136,50 @@ function extendRoomStay(id, newCheckoutDate, callback) {
     );
 }
 
+// --- Booking Management ---
+
+function getAllBookings(callback) {
+    db.all("SELECT * FROM bookings ORDER BY created_at DESC", [], (err, rows) => {
+        callback(err, rows);
+    });
+}
+
+function createBooking(data, callback) {
+    const token = require('crypto').randomBytes(16).toString('hex');
+    db.run(
+        "INSERT INTO bookings (room_id, guest_name, checkin_date, checkout_date, binding_token) VALUES (?, ?, ?, ?, ?)",
+        [data.roomId, data.guestName, data.checkinDate, data.checkoutDate, token],
+        function (err) {
+            callback(err, { id: this.lastID, bindingToken: token });
+        }
+    );
+}
+
+function getBookingByToken(token, callback) {
+    db.get("SELECT * FROM bookings WHERE binding_token = ?", [token], (err, row) => {
+        callback(err, row);
+    });
+}
+
+function bindBooking(bookingId, identity, callback) {
+    // identity can be lineId or sessionId
+    const field = identity.type === 'line' ? 'guest_line_id' : 'guest_session_id';
+    db.run(
+        `UPDATE bookings SET status = 'bound', ${field} = ? WHERE id = ?`,
+        [identity.value, bookingId],
+        function (err) {
+            callback(err, { changes: this.changes });
+        }
+    );
+}
+
 module.exports = {
     db,
     getAllRooms,
     updateRoomState,
-    extendRoomStay
+    extendRoomStay,
+    getAllBookings,
+    createBooking,
+    getBookingByToken,
+    bindBooking
 };

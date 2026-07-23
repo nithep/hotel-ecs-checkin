@@ -63,11 +63,31 @@ const CheckIn: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [cameraError, setCameraError] = useState('');
+  const [isManual, setIsManual] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const codeReader = useRef<BrowserMultiFormatReader | null>(null);
 
   useEffect(() => {
     codeReader.current = new BrowserMultiFormatReader();
+    
+    // ตรวจหาคิวรีพารามิเตอร์ ?room= ใน URL เพื่ออำนวยความสะดวกให้แขกข้ามขั้นตอนสแกนกล้องได้
+    const params = new URLSearchParams(window.location.search);
+    const roomParam = params.get('room');
+    if (roomParam) {
+      let roomNum = roomParam.trim();
+      // หากส่งมาเป็น URL เต็ม ให้แกะเฉพาะเลขห้องออกมา
+      const match = roomNum.match(/[?&]room=(\d+)/);
+      if (match) {
+        roomNum = match[1];
+      }
+      setCheckInData({
+        roomNumber: roomNum,
+        guestName: '',
+      });
+      setIsManual(false);
+      setStep('confirm');
+    }
+
     return () => { stopScanning(); };
   }, []);
 
@@ -98,8 +118,21 @@ const CheckIn: React.FC = () => {
       if (!data.room) throw new Error('Invalid QR');
       setCheckInData({ roomNumber: data.room, guestName: data.name || '', guestEmail: data.email });
     } catch {
-      setCheckInData({ roomNumber: text.trim(), guestName: '' });
+      let roomNum = text.trim();
+      // หากสแกนได้ URL เต็ม ให้แกะเฉพาะเลขห้อง
+      const match = roomNum.match(/[?&]room=(\d+)/);
+      if (match) {
+        roomNum = match[1];
+      } else {
+        const parts = roomNum.split('/');
+        const lastPart = parts[parts.length - 1];
+        if (/^\d+$/.test(lastPart)) {
+          roomNum = lastPart;
+        }
+      }
+      setCheckInData({ roomNumber: roomNum, guestName: '' });
     }
+    setIsManual(false);
     setStep('confirm');
   };
 
@@ -124,7 +157,7 @@ const CheckIn: React.FC = () => {
 
   const resetAll = () => {
     setStep('scan'); setCheckInData(null); setPdpaConsent(false);
-    setError(''); setCameraError('');
+    setError(''); setCameraError(''); setIsManual(false);
   };
 
   return (
@@ -175,11 +208,17 @@ const CheckIn: React.FC = () => {
 
                 {/* Camera View */}
                 <div className="relative aspect-square bg-black/60 rounded-2xl overflow-hidden border border-white/10">
+                  <video
+                    ref={videoRef}
+                    className={`w-full h-full object-cover ${scanning ? 'block' : 'hidden'}`}
+                    autoPlay
+                    playsInline
+                    muted
+                  />
                   {scanning ? (
                     <>
-                      <video ref={videoRef} className="w-full h-full object-cover" autoPlay playsInline muted />
                       {/* Scan overlay frame */}
-                      <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                         <div className="relative w-48 h-48">
                           {/* Corner borders */}
                           {['top-left', 'top-right', 'bottom-left', 'bottom-right'].map(c => (
@@ -200,13 +239,13 @@ const CheckIn: React.FC = () => {
                       </div>
                       <button
                         onClick={stopScanning}
-                        className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm text-white p-2 rounded-xl border border-white/10 hover:bg-red-500/80 transition-colors"
+                        className="absolute top-3 right-3 bg-black/60 backdrop-blur-sm text-white p-2 rounded-xl border border-white/10 hover:bg-red-500/80 transition-colors z-10"
                       >
                         <CameraOff size={16} />
                       </button>
                     </>
                   ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center gap-3 text-slate-500">
+                    <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-500">
                       <QrCode size={56} className="opacity-30" />
                       <p className="text-sm opacity-60">กดปุ่มด้านล่างเพื่อเปิดกล้อง</p>
                     </div>
@@ -238,7 +277,11 @@ const CheckIn: React.FC = () => {
 
                 {/* Manual entry fallback */}
                 <button
-                  onClick={() => { setCheckInData({ roomNumber: '', guestName: '' }); setStep('confirm'); }}
+                  onClick={() => {
+                    setCheckInData({ roomNumber: '', guestName: '' });
+                    setIsManual(true);
+                    setStep('confirm');
+                  }}
                   className="w-full py-3 rounded-2xl border border-white/10 text-slate-400 text-sm hover:bg-white/5 hover:text-white transition-all flex items-center justify-center gap-2"
                 >
                   <User size={16} />
@@ -276,16 +319,22 @@ const CheckIn: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Room Number Display */}
-                <div className="bg-gradient-to-r from-hotel-accent/10 to-hotel-glow/10 border border-hotel-accent/20 rounded-2xl p-5 text-center">
-                  <p className="text-xs text-hotel-accent uppercase tracking-widest mb-2 font-semibold">ห้องพักหมายเลข</p>
-                  <p className="text-5xl font-light text-white tracking-tighter drop-shadow-[0_0_20px_rgba(56,189,248,0.4)]">
-                    {checkInData.roomNumber || '—'}
-                  </p>
-                </div>
-
-                {/* Room Number Input (if manual) */}
-                {!checkInData.roomNumber && (
+                {/* Room Number Display or Input based on isManual */}
+                {!isManual ? (
+                  <div className="bg-gradient-to-r from-hotel-accent/10 to-hotel-glow/10 border border-hotel-accent/20 rounded-2xl p-5 text-center relative">
+                    <p className="text-xs text-hotel-accent uppercase tracking-widest mb-2 font-semibold">ห้องพักหมายเลข</p>
+                    <p className="text-5xl font-light text-white tracking-tighter drop-shadow-[0_0_20px_rgba(56,189,248,0.4)]">
+                      {checkInData.roomNumber || '—'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setIsManual(true)}
+                      className="absolute top-2 right-2 text-[10px] bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white px-2 py-1 rounded-lg transition-all"
+                    >
+                      แก้ไข
+                    </button>
+                  </div>
+                ) : (
                   <div>
                     <label className="block text-xs text-slate-400 mb-2 uppercase tracking-wider">หมายเลขห้อง *</label>
                     <input
@@ -293,6 +342,7 @@ const CheckIn: React.FC = () => {
                       value={checkInData.roomNumber}
                       onChange={e => setCheckInData(p => ({ ...p!, roomNumber: e.target.value }))}
                       className="w-full bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-hotel-accent/50 focus:border-hotel-accent/50 transition-all text-center text-2xl font-bold tracking-widest"
+                      autoFocus
                     />
                   </div>
                 )}

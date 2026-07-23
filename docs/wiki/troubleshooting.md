@@ -84,3 +84,11 @@ created: 2026-07-02
   2. สคริปต์จะดำเนินการแก้ไข Registry บังคับใช้ `UseGlobalDNS = 1` ให้แก่ Windows NCSI, เคลียร์บริการ WireGuard ตัวที่รันค้างเพื่อสกัด Error `"Manager already installed"`, และปรับระดับ Metric ของ Wi-Fi Adapter ให้มีความสำคัญสูงสุด (Interface Metric = 10) เมื่อเทียบกับ VPN (Interface Metric = 50)
   3. **การตั้งค่าเพิ่มเติมบนคลาวด์:** เข้าแผงควบคุม Cloudflare Zero Trust Console ไปที่ **Settings -> WARP Client -> Split Tunnels (โหมด Exclude)** แล้วป้อนช่วง IP เครือข่ายเสมือนของโรงแรม (เช่น `10.0.0.0/8`, `10.0.0.0/24`) และพอร์ต UDP `51820` เพื่อขจัดปัญหาการชนกันของท่อ VPN ในระดับทราฟฟิกภายนอก
 
+## 📌 ปัญหาอักขระภาษาไทยพังหรือกลายเป็นตัวอักษรต่างดาว (Character Encoding Mojibake)
+- **อาการ**: ข้อความภาษาไทยในไฟล์เอกสาร `.md` (เช่น `project_timeline.md`) แสดงผลเป็นตัวอักษรต่างดาว เช่น `ⵤѺ...` หรือ `ⵤѺѺк...`
+- **สาเหตุ**: เกิดจากสคริปต์ (Node.js/Python/PowerShell) หรือเอดิเตอร์ที่มีการอ่านและเขียนไฟล์ซ้ำโดยไม่ได้ระบุ Encoding เป็น `utf-8` แบบ Explicit ส่งผลให้ระบบไฟล์ทำการบันทึกข้อมูลด้วยระบบ Encoding อื่น (เช่น TIS-620 หรือ Windows-874)
+- **การแก้ไขและป้องกัน (Enforcement Standard)**:
+  1. **ฟื้นฟูข้อความ**: ใช้สคริปต์ Node.js อ่านไฟล์ด้วย `utf8` encoding และแทนที่ข้อความด้วย UTF-8 ภาษาไทยที่ถูกต้อง
+  2. **กฎเหล็กใน AGENTS.md (Rule 11)**: บังคับใช้ **Strict UTF-8 Encoding Standard** ในไฟล์ `AGENTS.md` และ `.agents/AGENTS.md` ห้ามบันทึกหรือแก้ไขไฟล์เอกสาร/โค้ดภาษาไทยโดยไม่ระบุ `utf8` หรือ `fs.readFileSync(path, 'utf8')` โดยเด็ดขาด
+
+
