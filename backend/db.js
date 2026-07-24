@@ -173,6 +173,32 @@ function bindBooking(bookingId, identity, callback) {
     );
 }
 
+function cancelBooking(bookingId, callback) {
+    db.run(
+        "UPDATE bookings SET status = 'cancelled' WHERE id = ? AND status = 'pending_binding'",
+        [bookingId],
+        function (err) {
+            callback(err, { changes: this.changes });
+        }
+    );
+}
+
+function deleteBooking(bookingId, callback) {
+    db.run(
+        "DELETE FROM bookings WHERE id = ? AND status IN ('cancelled', 'pending_binding')",
+        [bookingId],
+        function (err) {
+            callback(err, { changes: this.changes });
+        }
+    );
+}
+
+function getBookingById(bookingId, callback) {
+    db.get("SELECT * FROM bookings WHERE id = ?", [bookingId], (err, row) => {
+        callback(err, row);
+    });
+}
+
 module.exports = {
     db,
     getAllRooms,
@@ -181,5 +207,8 @@ module.exports = {
     getAllBookings,
     createBooking,
     getBookingByToken,
-    bindBooking
+    bindBooking,
+    cancelBooking,
+    deleteBooking,
+    getBookingById
 };

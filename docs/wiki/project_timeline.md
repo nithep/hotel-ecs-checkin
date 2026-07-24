@@ -549,3 +549,18 @@
        - Power Activation & Room State Sync
        - Check-out Override & Power Cutoff
 - **ผลลัพธ์:** ระบบเสมือนจริง (Digital Twin) ผ่านการทดสอบ 100% พร้อมใช้งานจริง
+
+
+## [2026-07-24] Fix Bug: Error Boundary on Bookings Page (TypeError: rooms.filter is not a function)
+- **สาเหตุของปัญหา**: หน้า Bookings.tsx เรียก api.getRooms() ซึ่งส่งคืน Object { success: true, rooms: [...] } แต่ fetchRooms() นำ res.data ไปใส่ state rooms โดยตรง ทำให้เกิด TypeError: rooms.filter is not a function จนถูก PremiumErrorBoundary ดักจับ
+- **การแก้ไข**: อัปเดต Bookings.tsx ให้สกัด res.data?.rooms / res.data?.bookings อย่างถูกต้อง เพิ่มการตรวจสอบ Array.isArray() และป้องกัน Null Pointer บน guest_name
+- **ผลการทดสอบ**: คอมไพล์ผ่านและ Re-deploy ขึ้นเครื่อง Pi เรียบร้อยแล้ว
+
+
+## [2026-07-24] HECS 8-System Audit & MVP Public Release Kit Ready
+- **รายละเอียด**: ดำเนินการตรวจสอบและยืนยันการเชื่อมต่อ 8 ระบบย่อยของ HECS (status-git, pi4, pbx, backend, frontend, cloudflare, wireguard, line)
+- **การเปลี่ยนแปลงหลัก**:
+  1. **System Audit & Integration:** ยืนยันระบบเชื่อมต่อแบบไร้รอยต่อ 100% (PBX Safety Test 23/23 passed, Frontend TypeScript 0 errors, Docker Production ready)
+  2. **Booking Management API:** เพิ่ม API สำหรับ cancelBooking, deleteBooking, getBookingById และเชื่อมต่อ frontend api/lib สอดรับกันสมบูรณ์
+  3. **MVP Public Release Kit:** สร้างไฟล์ SETUP_QUICKSTART.md คู่มือภาษาไทยสำหรับติดตั้งด่วนบน Raspberry Pi 4 หรือ Docker
+- **ผลลัพธ์**: พร้อมสำหรับการเผยแพร่ฟรีสำหรับสาธารณะและผู้ประกอบการโรงแรม

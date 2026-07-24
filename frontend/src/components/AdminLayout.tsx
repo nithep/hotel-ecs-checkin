@@ -2,7 +2,7 @@ import { Outlet, Link, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { 
   LayoutDashboard, QrCode, Wifi, Bot, MonitorPlay, Printer, Settings,
-  User, Globe, LogOut, ChevronDown
+  User, Globe, LogOut, ChevronDown, CalendarPlus
 } from 'lucide-react';
 import RoleSwitcher from './RoleSwitcher';
 import { auth } from '../lib/api';
@@ -17,6 +17,7 @@ const AdminLayout = () => {
   const navItems = [
     { path: `${basePath}`, label: 'ภาพรวม', labelEn: 'Overview', icon: MonitorPlay },
     { path: `${basePath}/dashboard`, label: 'คอนโซล', labelEn: 'Console', icon: LayoutDashboard },
+    { path: `${basePath}/bookings`, label: 'การจอง', labelEn: 'Bookings', icon: CalendarPlus },
     { path: `${basePath}/scan`, label: 'เช็คอิน', labelEn: 'Check-in', icon: QrCode },
     { path: `${basePath}/qr-generator`, label: 'สร้าง QR', labelEn: 'QR Generator', icon: Printer },
     { path: `${basePath}/wifi`, label: 'ตั้งค่าเครือข่าย', labelEn: 'Network Settings', icon: Wifi },

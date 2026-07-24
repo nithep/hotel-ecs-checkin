@@ -162,6 +162,7 @@ export const api = {
     apiClient.post('/rooms/control', { roomNumber, action, source }),
   
   // Bookings
+  getBookings: () => apiClient.get('/admin/bookings'),
   createBooking: (data: {
     roomId: number;
     guestName: string;
@@ -169,6 +170,8 @@ export const api = {
     checkoutDate: string;
   }) => apiClient.post('/admin/bookings', data),
   getBindingLink: (bookingId: number) => apiClient.get(`/admin/bookings/${bookingId}/binding`),
+  cancelBooking: (bookingId: number) => apiClient.patch(`/admin/bookings/${bookingId}/cancel`),
+  deleteBooking: (bookingId: number) => apiClient.delete(`/admin/bookings/${bookingId}`),
   getBookingInfo: (token: string) => apiClient.get(`/bookings/info?token=${token}`),
   bindBooking: (data: { bindingToken: string; lineId?: string; sessionId?: string }) =>
     apiClient.post('/bookings/bind', data),

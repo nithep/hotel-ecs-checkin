@@ -534,6 +534,24 @@ app.get('/api/admin/bookings/:id/binding', verifyStaffToken, (req, res) => {
     });
 });
 
+app.patch('/api/admin/bookings/:id/cancel', verifyStaffToken, (req, res) => {
+    const bookingId = req.params.id;
+    db.cancelBooking(bookingId, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (result.changes === 0) return res.status(400).json({ error: 'Cannot cancel: booking not found or already bound/cancelled' });
+        res.json({ success: true, message: 'Booking cancelled successfully' });
+    });
+});
+
+app.delete('/api/admin/bookings/:id', verifyStaffToken, (req, res) => {
+    const bookingId = req.params.id;
+    db.deleteBooking(bookingId, (err, result) => {
+        if (err) return res.status(500).json({ error: err.message });
+        if (result.changes === 0) return res.status(400).json({ error: 'Cannot delete: booking not found or is currently bound (active)' });
+        res.json({ success: true, message: 'Booking deleted successfully' });
+    });
+});
+
 app.get('/api/bookings/info', (req, res) => {
     const { token } = req.query;
     if (!token) return res.status(400).json({ error: 'token is required' });

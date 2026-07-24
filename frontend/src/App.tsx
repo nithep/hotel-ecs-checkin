@@ -14,6 +14,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import Login from './pages/Login';
 import Unauthorized from './components/Unauthorized';
 import GuestBinding from './pages/GuestBinding';
+import Bookings from './pages/Bookings';
 
 const ProtectedRoute = ({ allowedRoles, children }: { allowedRoles: string[], children: ReactNode }) => {
   const { role, token } = useAuth();
@@ -100,6 +101,7 @@ function App() {
           }>
             <Route index element={<Presentation />} />
             <Route path="dashboard" element={<Dashboard />} />
+            <Route path="bookings" element={<Bookings />} />
             <Route path="scan" element={<CheckIn />} />
             <Route path="qr-generator" element={<QRCodeGenerator />} />
             <Route path="wifi" element={<WifiSettings />} />
