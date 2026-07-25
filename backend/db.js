@@ -73,9 +73,8 @@ function initDb() {
                 return;
             }
             if (row && row.count === 0) {
-                const insert = db.prepare("INSERT INTO rooms (id, status, power, guest_name, guest_email, consent_given_at, consent_ip) VALUES (?, ?, ?, NULL, NULL, NULL, NULL)");
                 const initialRooms = [
-                    { id: 101, status: 'vacant', power: false },
+                    { id: 101, status: 'occupied', power: true, guest_name: 'คุณสมชาย (Mock Data)' },
                     { id: 102, status: 'vacant', power: false },
                     { id: 103, status: 'vacant', power: false },
                     { id: 104, status: 'vacant', power: false },
@@ -83,10 +82,17 @@ function initDb() {
                     { id: 106, status: 'vacant', power: false }
                 ];
                 initialRooms.forEach(room => {
-                    insert.run(room.id, room.status, room.power);
+                    const gName = room.guest_name || null;
+                    db.run("INSERT INTO rooms (id, status, power, guest_name) VALUES (?, ?, ?, ?)", [room.id, room.status, room.power, gName]);
                 });
-                insert.finalize();
-                console.log('Database seeded with initial rooms.');
+
+                // Seed mock bookings
+                db.run(`INSERT INTO bookings (room_id, guest_name, status, checkin_date, checkout_date) 
+                        VALUES (101, 'คุณสมชาย (Mock Data)', 'bound', datetime('now'), datetime('now', '+1 day'))`);
+                db.run(`INSERT INTO bookings (room_id, guest_name, status, checkin_date, checkout_date) 
+                        VALUES (102, 'คุณสมหญิง (Mock Data)', 'pending_binding', datetime('now', '+1 day'), datetime('now', '+2 days'))`);
+
+                console.log('Database seeded with initial rooms and mock bookings.');
             }
         });
     });

@@ -564,3 +564,11 @@
   2. **Booking Management API:** เพิ่ม API สำหรับ cancelBooking, deleteBooking, getBookingById และเชื่อมต่อ frontend api/lib สอดรับกันสมบูรณ์
   3. **MVP Public Release Kit:** สร้างไฟล์ SETUP_QUICKSTART.md คู่มือภาษาไทยสำหรับติดตั้งด่วนบน Raspberry Pi 4 หรือ Docker
 - **ผลลัพธ์**: พร้อมสำหรับการเผยแพร่ฟรีสำหรับสาธารณะและผู้ประกอบการโรงแรม
+
+## [2026-07-25] v1.0.0-MVP Public Release Ready
+- **รายละเอียด**: ดำเนินการทำความสะอาดโปรเจกต์ (Scrubbing) และเตรียมแพ็กเกจ MVP สำหรับสาธารณะ
+- **การเปลี่ยนแปลงหลัก**:
+  1. **Scrubbing & Mock Data:** ลบไฟล์ฐานข้อมูลและประวัติการทดสอบออกทั้งหมด เพิ่มสคริปต์จำลองข้อมูล (Mock Data) ห้อง 101-105 ลงใน \ackend/db.js\ เพื่อให้ผู้เริ่มใช้งานเห็นภาพทันที
+  2. **One-Line Installer:** สร้าง \install.sh\ รองรับการติดตั้งแบบ curl-to-bash สำหรับยุคใหม่ (\curl -sL ... | bash\)
+  3. **Documentation:** อัปเดต \README.md\ พร้อมชี้เป้าหมายไปที่คู่มือติดตั้งด่วน และอัปเดต \.env.example\ สำหรับซ่อนค่าคอนฟิกที่สำคัญ
+- **ผลลัพธ์**: โครงการพร้อมเผยแพร่เวอร์ชัน 1.0.0-MVP สู่สาธารณชนแบบ Open Source
