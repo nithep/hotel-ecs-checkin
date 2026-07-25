@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  PROJECT_ID: hotel-ecs-nithep
   SERVICE_NAME: hotel-ecs-backend
   REGION: asia-southeast1
 
