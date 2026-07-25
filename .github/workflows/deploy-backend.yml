@@ -48,6 +48,7 @@ jobs:
         with:
           service: ${{ env.SERVICE_NAME }}
           region: ${{ env.REGION }}
+          flags: '--allow-unauthenticated'
           image: ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/cloud-run-source-deploy/${{ env.SERVICE_NAME }}:${{ github.sha }}
           env_vars: |
             MQTT_BROKER_URL=${{ secrets.MQTT_BROKER_URL }}
