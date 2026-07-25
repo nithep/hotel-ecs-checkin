@@ -580,3 +580,11 @@
   2. **Cloud Backend**: ��Ѻ Backend ����觤���觼�ҹ MQTT ��ѧ Edge ᷹��ä�µç (Serial/LAN) �����ͧ�Ѻ Multi-branch
   3. **Frontend (Firebase Hosting)**: ���� irebase.json ��� .firebaserc ��������� Deploy �к������� Cloud
 - **���Ѿ��**: �ç���ҧ��鹰ҹ���������Ѻ��÷ӧҹẺ Distributed IoT Network �������ö�����ü�ҹ�ٹ���ҧ (Centralized)
+
+## [2026-07-26] GCP Cloud Run & Firebase Hosting CI/CD Pipeline Ready
+- **รายละเอียด**: เชื่อมต่อ CI/CD Automation สำเร็จ 100% ผ่าน GitHub Actions, Google Cloud Run และ Firebase Hosting
+- **การเปลี่ยนแปลงหลัก**:
+  1. **Google Cloud Run (Backend)**: ตั้งค่า Service Account (github-deployer), เปิดใช้งาน API, ผูก Billing Account และคอนฟิก Workflow deploy-backend.yml เพื่อ Build Container ขึ้น Artifact Registry และ Deploy สู่ Cloud Run (Region: asia-southeast1) โดยอัตโนมัติเมื่อเกิดการ Push ไปที่ main หรือ master
+  2. **Firebase Hosting (Frontend)**: ตั้งค่า Workflow deploy-frontend.yml ใช้ Node 20 Build React/Vite และ Deploy สู่ Firebase Hosting โดยอัตโนมัติ
+  3. **Auto Deployment Verification**: ทดสอบการทริกเกอร์ GitHub Actions สามารถผ่านการทดสอบ Build & Deploy สำเร็จทั้ง Backend และ Frontend (Status: Success 🟢)
+- **ผลลัพธ์**: ระบบ Hotel ECS รองรับสถาปัตยกรรม Hybrid Cloud & Edge Deployment สมบูรณ์แบบ
