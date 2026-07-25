@@ -223,7 +223,7 @@
 - **รายละเอียด:**
   - 🛠 **Diagnostics Engine:** สร้างสคริปต์ระบบวินิจฉัยสุขภาพของบอร์ด Pi 4 และระบบ IoT โดยเช็คพารามิเตอร์ของตู้ PBX (พอร์ต 23, สถานะ connection), เครือข่ายอินเทอร์เน็ตผ่าน TCP socket ไปยัง 8.8.8.8, สถานะความสมบูรณ์และขนาดไฟล์ของฐานข้อมูล SQLite, และทรัพยากร CPU/RAM/Uptime ของระบบ
   - 🤖 **AI Assistant Backend:** สร้าง Route `/api/diagnostics/health` และ `/api/diagnostics/copilot` เพื่อรองรับการแชทถามตอบปัญหา โดยวิเคราะห์ผ่านสถานะสุขภาพของระบบแบบ real-time และดึงข้อมูลเฉพาะส่วนจาก `troubleshooting.md` ร่วมประมวลผลผ่าน Gemini 3.5 Flash API (และรองรับระบบ Local Rule-based assistant คอยวิเคราะห์ช่วยเหลือออฟไลน์หากไม่พบคีย์การ์ด AI)
-  - 🎨 **Frontend Layout & UI:** สร้างหน้า **Copilot** แดชบอร์ดแบบพรีเมียม (Grid แสดงสัญญาณไฟเขียว/ไฟแดงของฮาร์ดแวร์, แถบสถานะ CPU/RAM) และหน้าจอคุ�- **การอัปเดตทักษะบรรณารักษ์และการทำความสะอาด Workspace Root (Librarian OKF Skill & Clean Architecture):**
+  - 🎨 **Frontend Layout & UI:** สร้างหน้า **Copilot** แดชบอร์ดแบบพรีเมียม (Grid แสดงสัญญาณไฟเขียว/ไฟแดงของฮาร์ดแวร์, แถบสถานะ CPU/RAM) และหน้าจอคุ�- **การอัปเดตทักษะบรรณารักษ์และการทำความสะอาด Workspace Root (Librarian OKF Skill & Clean Architecture):**
   1. สร้างทักษะใหม่ [Librarian_OKF_Protocol](file:///c:/Users/Nithep/ไดรฟ์ของฉัน%20(cnithep@gmail.com)/Hotel-ECS/.agents/skills/Librarian_OKF_Protocol/SKILL.md) กำหนดมาตรฐานกฎเหล็ก (Librarian Logic Rules) สำหรับ Qoder และ AI Agents ทุกตัวในการห้ามสร้างไฟล์สรุปคู่มือที่ Root Workspace เด็ดขาด และบังคับเวิร์กโฟลว์จัดเก็บเข้า `/docs/wiki/`
   2. ทำการลบไฟล์ขยะและไฟล์ชั่วคราวจากการ Deploy ที่ตกค้างอยู่ใน Root (เช่น `cf_output.txt`, `cloudflared.exe`, `deploy.zip`, `old_app.tsx`, `temp_deploy`)
   3. ย้ายไฟล์เอกสารคู่มือ Markdown จำนวน 11 รายการจาก Root เข้าไปจัดเก็บอย่างเป็นหมวดหมู่ใน `/docs/wiki/` พร้อมทั้งอัปเดตสารบัญ [[index|docs/index.md]] และประวัติระบบ [[log|docs/log.md]] ส่งผลให้ Workspace Root กลับมาสะอาด ตรงตามมาตรฐาน Clean Architecture 100%
@@ -370,9 +370,11 @@
 **สถานะ:** พร้อมทดสอบ UAT ด้วยมือถือจริงใน LINE App — กดปุ่ม สแกน QR Code แล้วกล้อง LINE ควรเปิดขึ้นทันที
 
 ### วันที่ 21 กรกฎาคม 2026: แก้ไขบั๊กหน้าจอจอดำ และ PDPA Validation
-- **สาเหตุจอดำ:** เกิดจากสิทธิ์โฟลเดอร์บน Pi4 (rontend/dist) ไม่ถูกต้อง ทำให้ไม่สามารถอ่านไฟล์ JavaScript ได้
+- **สาเหตุจอดำ:** เกิดจากสิทธิ์โฟลเดอร์บน Pi4 (
+rontend/dist) ไม่ถูกต้อง ทำให้ไม่สามารถอ่านไฟล์ JavaScript ได้
 - **การแก้ไขจอดำ:** ปรับแก้สิทธิ์โฟลเดอร์ด้วย chmod -R 755 และกำหนด Route /scan ให้ถูกต้อง
-- **สาเหตุระบบเช็คอินล้มเหลว (Invalid PDPA Consent):** ฟังก์ชัน alidateCheckinConsent บน Backend คืนค่าเป็น 	rue แทนที่จะเป็น Object { valid: true } ทำให้ระบบตรวจสอบเข้าใจผิดว่าไม่ผ่าน
+- **สาเหตุระบบเช็คอินล้มเหลว (Invalid PDPA Consent):** ฟังก์ชัน 
+alidateCheckinConsent บน Backend คืนค่าเป็น 	rue แทนที่จะเป็น Object { valid: true } ทำให้ระบบตรวจสอบเข้าใจผิดว่าไม่ผ่าน
 - **การแก้ไข PDPA:** อัปเดต pdpa_service.js ให้คืนค่า { valid: true } อย่างถูกต้อง และ Restart Container
 - **ผลลัพธ์ (UAT):** ระบบสามารถทำรายการเช็คอินผ่านหน้าเว็บ (มือถือ) ได้สำเร็จ ข้อมูลวิ่งเข้าสู่ Google Sheets, แจ้งเตือนลง Google Chat และสั่งเปิดรีเลย์ระบบไฟฟ้าที่ตู้สาขา (Phonik PBX) ได้อย่างสมบูรณ์! 
 
@@ -574,12 +576,12 @@
 - **ผลลัพธ์**: โครงการพร้อมเผยแพร่เวอร์ชัน 1.0.0-MVP สู่สาธารณชนแบบ Open Source
 
 ## [2026-07-25] Phase 2: Cloud-Native & Edge Computing Architecture
-- **��������´**: ������������ʶһѵ¡��� (Architecture Shift) �����к����Ǵ���� Edge Gateway
-- **�������¹�ŧ��ѡ**: 
-  1. **Edge Agent (Pi Zero 2 W)**: ���ҧʤ�Ի�� edge-agent Ẻ Standalone �������� HiveMQ MQTT Broker
-  2. **Cloud Backend**: ��Ѻ Backend ����觤���觼�ҹ MQTT ��ѧ Edge ᷹��ä�µç (Serial/LAN) �����ͧ�Ѻ Multi-branch
-  3. **Frontend (Firebase Hosting)**: ���� irebase.json ��� .firebaserc ��������� Deploy �к������� Cloud
-- **���Ѿ��**: �ç���ҧ��鹰ҹ���������Ѻ��÷ӧҹẺ Distributed IoT Network �������ö�����ü�ҹ�ٹ���ҧ (Centralized)
+- **รายละเอียด**: ปรับเปลี่ยนสถาปัตยกรรม (Architecture Shift) จากระบบเดี่ยวเข้าสู่ Edge Gateway
+- **การเปลี่ยนแปลงหลัก**: 
+  1. **Edge Agent (Pi Zero 2 W)**: สร้างสคริปต์ edge-agent แบบ Standalone เชื่อมต่อกับ HiveMQ MQTT Broker
+  2. **Cloud Backend**: ปรับ Backend ให้ส่งคำสั่งผ่าน MQTT ไปยัง Edge แทนการคุยตรง (Serial/LAN) เพื่อรองรับ Multi-branch
+  3. **Frontend (Firebase Hosting)**: เพิ่ม firebase.json และ .firebaserc เพื่อรองรับการ Deploy ระบบทั้งหมดขึ้น Cloud
+- **ผลลัพธ์**: โครงสร้างพื้นฐานพร้อมสำหรับการทำงานแบบ Distributed IoT Network ที่สามารถควบคุมผ่านศูนย์กลาง (Centralized)
 
 ## [2026-07-26] GCP Cloud Run & Firebase Hosting CI/CD Pipeline Ready
 - **รายละเอียด**: เชื่อมต่อ CI/CD Automation สำเร็จ 100% ผ่าน GitHub Actions, Google Cloud Run และ Firebase Hosting
