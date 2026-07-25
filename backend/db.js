@@ -45,6 +45,7 @@ function initDb() {
             }
             const colNames = columns.map(c => c.name);
             const migrations = [
+                { name: 'branch_id', type: 'TEXT DEFAULT "branch_01"' },
                 { name: 'guest_name', type: 'TEXT' },
                 { name: 'guest_email', type: 'TEXT' },
                 { name: 'consent_given_at', type: 'TEXT' },

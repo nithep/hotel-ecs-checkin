@@ -3,7 +3,7 @@ require('dotenv').config({ path: path.join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const { randomUUID } = require('crypto');
-const { createConnector } = require('../pbx-connector');
+const { createConnector } = require('./services/mqtt_connector');
 
 // ─── Services ──────────────────────────────────────────────────────────────
 const { ApprovalGate } = require('./services/approval_gate');
