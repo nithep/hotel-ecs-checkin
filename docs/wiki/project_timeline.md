@@ -590,3 +590,62 @@ alidateCheckinConsent บน Backend คืนค่าเป็น 	rue แท�
   2. **Firebase Hosting (Frontend)**: ตั้งค่า Workflow deploy-frontend.yml ใช้ Node 20 Build React/Vite และ Deploy สู่ Firebase Hosting โดยอัตโนมัติ
   3. **Auto Deployment Verification**: ทดสอบการทริกเกอร์ GitHub Actions สามารถผ่านการทดสอบ Build & Deploy สำเร็จทั้ง Backend และ Frontend (Status: Success 🟢)
 - **ผลลัพธ์**: ระบบ Hotel ECS รองรับสถาปัตยกรรม Hybrid Cloud & Edge Deployment สมบูรณ์แบบ
+
+## [2026-07-26] HECS Architecture Taxonomy & Academic Feasibility Proof
+- **รายละเอียด**: กำหนดชื่อเรียกยุทธศาสตร์สถาปัตยกรรม 2 รูปแบบ และส่งมอบบทพิสูจน์เชิงวิศวกรรมคอมพิวเตอร์ (Academic Feasibility Proof)
+- **การเปลี่ยนแปลงหลัก**:
+  1. **Architecture Taxonomy**: กำหนดชื่อเรียกทางการ **HECS Hybrid Cloud-Native Edge Architecture** (Cloud Run + Firebase + Pi Zero 2 W + MQTT) และ **HECS Local Standalone Gateway Architecture** (All-in-One Pi 4)
+  2. **Conceptual Blueprints**: ออกแบบผัง Mermaid Diagram แสดงการเชื่อมต่อทั้งแบบ Multi-Branch Cloud Edge และ Offline-First Local Standalone
+  3. **Academic Proof of Concept**: พิสูจน์ด้วยหลักวิชาการ Computer Engineering ใน 4 มิติ (Resource Optimization RAM < 45MB บน Pi Zero 2 W, Network Resiliency ข้าม NAT ด้วย Outbound TLS MQTT, Security ZTNA/mTLS, และ Multi-Tenant Scalability)
+- **ผลลัพธ์**: ได้รับมาตรฐานการออกแบบเชิงสถาปัตยกรรมที่สามารถอ้างอิงทางวิชาการและเตรียมนำไปถ่ายทอดแก่องค์กรและช่างติดตั้ง
+## 2026-07-28: สถาปัตยกรรม HECS Hybrid Cloud-Native Edge (Vertex AI + Pi Z2W + LINE MINI App)
+- **สถาปัตยกรรมใหม่ (Architectural Shift):** ปรับเปลี่ยนแนวคิดจาก All-in-one Pi 4 ไปสู่สถาปัตยกรรม **Cloud-Native Hybrid Edge** โดยกำหนดให้รันระบบหลัก (Backend/Frontend) บน Google Cloud Run เพื่อลดภาระ และใช้ **Raspberry Pi Zero 2 W** เป็น Edge Gateway สำหรับควบคุม Relay (ผ่าน CCH2 Protocol) 
+- **การนำ Vertex AI มาใช้:** ประยุกต์ใช้ Vertex AI สำหรับเทรนโมเดล Machine Learning (Dynamic Pricing) และแปลงผลลัพธ์เป็น **TensorFlow Lite (.tflite)** เพื่อนำไปรันบน Edge (Pi Z2W) แบบออฟไลน์ 
+- **ระบบ Payment & Social:** ปรับ Frontend ไปเป็น **LINE MINI App** เพื่อรองรับ In-App Purchase (IAP) ผ่าน LINE Pay และ PromptPay ช่วยให้ลูกค้าทำ Self Check-in ได้แบบไร้รอยต่อ
+- **Google Workspace (Financial Alerting):** วางระบบแจ้งเตือนผ่าน LINE Notify และผูกกับบัญชี Google Sheets/Calendar เพืื่อป้องกันปัญหาการลืมชำระค่าเซิร์ฟเวอร์
+- **Digital Twin Test Harness:** พัฒนา Simulator จำลองตู้สาขา (PBX ECS-103R V.5) แบบ Software-in-the-Loop 100% ทำให้ระบบถูกแยกขาดการทดสอบออกจากฮาร์ดแวร์จริงอย่างสมบูรณ์ ลดความเสี่ยงพังเสียหาย
+- **หมายเหตุสำหรับเซสชันหน้า:** โค้ด Frontend ของ LINE MINI App ถูกสร้างโครงไว้ที่ `frontend-liff/` ซึ่งเป็น **ระบบใหม่ทั้งหมด ไม่ใช่ Dashboard ตัวเดิม** เตรียมพร้อมสำหรับการแสดงผล (Render) หรือปรับแต่ง UI ต่อในแชตถัดไป
+
+## [2026-07-28] Lightweight AI Model Training (Vertex AI/Edge AI)
+- **รายละเอียด:** เริ่มต้นบูรณาการ AI แบบเรียบง่ายตามแนวทาง Lightweight ประหยัดทรัพยากร
+- **การเปลี่ยนแปลงหลัก:**
+  1. สร้างโฟลเดอร์ `/ai-models` สำหรับการทำงาน Data Science และ Machine Learning
+  2. พัฒนาสคริปต์ `train_pricing_model.py` เพื่อจำลองข้อมูลและเทรน Keras Neural Network แบบ Local แล้วส่งออกเป็นไฟล์ `pricing_model.tflite`
+  3. เพิ่ม `requirements.txt` ให้กับ Pi Zero 2 W (`edge-agent`) สำหรับติดตั้ง `tflite-runtime` เพื่อรองรับการรัน Inference ฝั่ง Edge ออฟไลน์
+  4. เพิ่มคู่มือการใช้งานโหมดประหยัด (Local Training) ลงใน `/ai-models/README.md`
+- **ผลลัพธ์:** โครงสร้างพร้อมสำหรับการพัฒนาและใช้งาน AI (Dynamic Pricing) บนอุปกรณ์ปลายทางอย่าง Pi Zero 2 W โดยไม่เปลืองงบ Cloud Computing มากเกินจำเป็น
+
+## [2026-07-28] LINE MINI App Frontend Initialization
+- **รายละเอียด:** ตั้งค่าระบบ Frontend สำหรับ LINE MINI App (Self Check-in)
+- **การเปลี่ยนแปลงหลัก:**
+  1. สร้าง `package.json` สำหรับโปรเจกต์
+  2. ติดตั้ง Dependencies ที่จำเป็น ได้แก่ React, Vite, และ `@line/liff`
+  3. คอนฟิกไฟล์ `vite.config.js` เพื่อรองรับการ Build
+  4. ทดสอบการ Build (`npm run build`) สำเร็จสมบูรณ์ ไร้ข้อผิดพลาด
+- **ผลลัพธ์:** โครงสร้างโปรเจกต์ `frontend-liff` มีความสมบูรณ์และพร้อมสำหรับการพัฒนา UI และการทำงานของระบบ Check-in ต่อไป
+
+
+## [2026-07-28] HECS Full-Stack Integration: Backend API + Edge Agent + Digital Twin
+
+- **รายละเอียด:** เชื่อมต่อชั้น (Layer) ทั้ง 3 เข้าหากันเป็นครั้งแรก สร้าง End-to-End Pipeline แบบ Software-in-the-Loop สมบูรณ์
+- **Bug ที่แก้ไข:** MQTT Topic Mismatch — Backend publish /cmd แต่ Edge subscribe /command ทำให้คำสั่งถูกยิงออกแต่ไม่มีใครรับ แก้ไขให้ตรงกันทั้งระบบ
+- **การเปลี่ยนแปลงหลัก:**
+  1. **Backend Cloud Run** (ackend-cloudrun/index.js): แก้ Topic Bug, เพิ่ม POST /api/guest/checkout, เพิ่ม GET /api/room/status/:roomNumber, เพิ่ม In-Memory State Store และ MQTT Result Subscribe
+  2. **Edge Agent** (edge-agent/mqtt_agent.js): เพิ่ม PBX_MODE env var (mock/tcp/serial) ให้สลับโหมดได้โดยไม่แก้โค้ด, แก้ Topic, เพิ่ม Error Result publish กลับ Backend
+  3. **Digital Twin Simulator** (worker/digital-twin/simulator.py): อัปเกรดเป็น v2.0 — เพิ่ม State Dashboard แสดงผลทุกครั้งที่ Power State เปลี่ยน, ขยายห้องพักจำลองเป็น 9 ห้อง (Floor 01-03), เพิ่ม argparse
+  4. **Orchestration Script** (worker/digital-twin/run_all.ps1): รัน 3 Service พร้อมกันในหน้าต่าง Terminal แยก ด้วยคำสั่งเดียว
+  5. **E2E Integration Test** (worker/digital-twin/e2e_test.js): ทดสอบ 6 Test Cases ครอบคลุม Health Check, CheckIn, CheckOut, Room Status, และ Input Validation
+- **ผลลัพธ์:** ระบบพร้อมสำหรับการทดสอบ End-to-End แบบ Local ได้ทันที ด้วยการรัน .\worker\digital-twin\run_all.ps1 แล้วตามด้วย 
+ode worker/digital-twin/e2e_test.js
+
+## [2026-08-01] Smart Nurse Call & Predictive Analytics Architecture: Edge Serial Listener Implementation
+
+- **รายละเอียด**: พัฒนาโมดูล [worker/nurse_call_serial_listener.py](file:///c:/Users/Nithep/ไดรฟ์ของฉัน%20(cnithep@gmail.com)/Hotel-ECS/worker/nurse_call_serial_listener.py) สำหรับเป็น Edge Serial Listener ของระบบ Smart Nurse Call (โรงพยาบาลราชเวช) ตามสถาปัตยกรรม Layer 2 (Edge Computing Layer - Raspberry Pi Zero 2 W / Pi 4 @ Ward Counter)
+- **การเปลี่ยนแปลงหลัก**:
+  1. **Serial Data Listener & Protocol Parser**: สร้างคลาส `PhonikNurseCallProtocolParser` สำหรับถอดรหัส RS-232 ASCII Frames จากตู้ Phonik DX-32C/80C/144C (เช่น `CALL0101=BED1`, `EMG0202=BATH`, `CARDIAC0305=BED2`, `CANCEL0101=BED1`)
+  2. **Edge AI Engine & Emergency Classification**: สร้างคลาส `EdgeAIEngine` เพื่อประเมินระดับความฉุกเฉิน (0: Cancel, 1: Normal Call SLA 180s, 2: Bathroom Emergency SLA 60s, 3: Cardiac Code Blue SLA 30s) และกำหนดสเกลการแจ้งเตือน
+  3. **SQLite Local Fallback & Offline Queue**: สร้างคลาส `LocalEventDB` เพื่อจัดเก็บ Event ลงใน SQLite เสมอ ป้องกันข้อมูลสูญหายเมื่อการเชื่อมต่ออินเทอร์เน็ตหลุด
+  4. **Background Cloud Sync Worker**: พัฒนา Thread ทำหน้าที่ส่งข้อมูลจาก SQLite ขึ้นสู่ GCP Pub/Sub / Cloud Functions โดยอัตโนมัติเมื่อระบบกลับมาออนไลน์
+  5. **Windows UTF-8 Logging Standard**: กำหนดค่า Standard Output Encoders สำหรับแสดงผลภาษาไทยอย่างถูกต้อง
+- **ผลการทดสอบ**: รันสอบผ่าน 100% ทั้งในโหมด Mock Listener และการทดสอบ Local Event Storage & Cloud Sync Loop
+

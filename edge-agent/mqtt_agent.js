@@ -1,120 +1,177 @@
+'use strict';
+
+/**
+ * edge-agent/mqtt_agent.js
+ * 
+ * HECS Edge Agent — รันบน Raspberry Pi Zero 2 W
+ * 
+ * หน้าที่:
+ *   1. Subscribe MQTT Topic รับคำสั่ง ON/OFF จาก Cloud Backend
+ *   2. แปลงคำสั่งเป็น CCH2 Protocol แล้วส่งผ่าน TCP ไปยัง PBX จริง (หรือ Simulator)
+ *   3. Publish ผลลัพธ์กลับ Cloud Backend ผ่าน MQTT
+ * 
+ * PBX_MODE:
+ *   - "mock"  : ใช้ Mock PBX ภายใน (ไม่ต้องต่อฮาร์ดแวร์ — สำหรับ Dev)
+ *   - "tcp"   : เชื่อมต่อตู้ PBX จริง/Simulator ผ่าน TCP (สำหรับ Production หรือ E2E Test)
+ *   - "serial": เชื่อมต่อผ่าน Serial Port (สำหรับ Pi ที่ต่อสาย RS232)
+ */
+
 require('dotenv').config();
 const mqtt = require('mqtt');
 const { createConnector } = require('./index');
 const { logger } = require('./logger');
 
-// Load configurations from Environment Variables
-const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtts://your-hivemq-cluster-url:8883';
-const MQTT_USERNAME = process.env.MQTT_USERNAME || 'hotel-edge';
-const MQTT_PASSWORD = process.env.MQTT_PASSWORD || 'your-password';
-const BRANCH_ID = process.env.BRANCH_ID || 'branch_01';
-const PBX_HOST = process.env.PBX_HOST || '192.168.1.100';
-const PBX_PORT = parseInt(process.env.PBX_PORT, 10) || 23;
+// ─── Configuration ────────────────────────────────────────────────────────────
+const MQTT_BROKER_URL = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com:1883';
+const MQTT_USERNAME   = process.env.MQTT_USERNAME   || null;
+const MQTT_PASSWORD   = process.env.MQTT_PASSWORD   || null;
+const BRANCH_ID       = process.env.BRANCH_ID       || 'branch-a';
+const PBX_MODE        = process.env.PBX_MODE        || 'mock'; // 'mock' | 'tcp' | 'serial'
+const PBX_HOST        = process.env.PBX_HOST        || '127.0.0.1'; // ชี้ไปที่ Simulator ในโหมด Dev
+const PBX_PORT        = parseInt(process.env.PBX_PORT, 10) || 2323; // Python Simulator port
+const SERIAL_PATH     = process.env.SERIAL_PATH     || '/dev/ttyUSB0';
 
-// Topics
-const TOPIC_COMMAND = `hotel/${BRANCH_ID}/room/+/command`;
-const TOPIC_STATUS = `hotel/${BRANCH_ID}/status`;
+// ─── MQTT Topics ──────────────────────────────────────────────────────────────
+// ⚠️  ต้องตรงกับที่ Backend publish: hotel/${BRANCH_ID}/room/${roomNumber}/command
+const TOPIC_COMMAND   = `hotel/${BRANCH_ID}/room/+/command`;
+const TOPIC_STATUS    = `hotel/${BRANCH_ID}/edge/status`;
 
-// 1. Initialize PBX Connector
+// ─── PBX Connector Factory ────────────────────────────────────────────────────
+logger.info(`[Edge Agent] Starting in PBX_MODE="${PBX_MODE}"`);
+
+const connectorConfig = { mode: PBX_MODE };
+if (PBX_MODE === 'tcp') {
+  connectorConfig.host = PBX_HOST;
+  connectorConfig.port = PBX_PORT;
+  logger.info(`[Edge Agent] TCP Target: ${PBX_HOST}:${PBX_PORT}`);
+} else if (PBX_MODE === 'serial') {
+  connectorConfig.serialPath = SERIAL_PATH;
+  logger.info(`[Edge Agent] Serial Port: ${SERIAL_PATH}`);
+} else {
+  logger.info('[Edge Agent] Mock Mode — no hardware required.');
+}
+
 const pbx = createConnector({
-  mode: 'tcp', // Use 'mock' for local testing without actual PBX
-  host: PBX_HOST,
-  port: PBX_PORT,
+  ...connectorConfig,
   heartbeatInterval: 30000,
 });
 
-// 2. Initialize MQTT Client
-logger.info(`Connecting to MQTT Broker at ${MQTT_BROKER_URL}...`);
-const mqttClient = mqtt.connect(MQTT_BROKER_URL, {
-  username: MQTT_USERNAME,
-  password: MQTT_PASSWORD,
+// ─── MQTT Client ──────────────────────────────────────────────────────────────
+const mqttOptions = {
   clientId: `edge-agent-${BRANCH_ID}-${Math.random().toString(16).substr(2, 8)}`,
-  // Last Will and Testament (LWT)
   will: {
     topic: TOPIC_STATUS,
-    payload: JSON.stringify({ status: 'offline', timestamp: Date.now() }),
+    payload: JSON.stringify({ status: 'offline', branchId: BRANCH_ID, timestamp: Date.now() }),
     qos: 1,
-    retain: true
-  }
-});
+    retain: true,
+  },
+};
+if (MQTT_USERNAME) mqttOptions.username = MQTT_USERNAME;
+if (MQTT_PASSWORD) mqttOptions.password = MQTT_PASSWORD;
 
-// Connect to PBX and MQTT
-async function start() {
-  try {
-    await pbx.connect();
-    logger.info('Connected to PBX successfully.');
-  } catch (error) {
-    logger.error(`Failed to connect to PBX: ${error.message}`);
-    // Optional: We can still continue, PBX connector has auto-reconnect
-  }
-}
+logger.info(`[MQTT] Connecting to ${MQTT_BROKER_URL}...`);
+const mqttClient = mqtt.connect(MQTT_BROKER_URL, mqttOptions);
 
+// ─── MQTT Event Handlers ──────────────────────────────────────────────────────
 mqttClient.on('connect', () => {
-  logger.info('Connected to MQTT Broker.');
-  
-  // Publish online status
-  mqttClient.publish(TOPIC_STATUS, JSON.stringify({ status: 'online', timestamp: Date.now() }), { retain: true, qos: 1 });
-  
+  logger.info('[MQTT] ✅ Connected to Broker.');
+
+  // Publish status online
+  mqttClient.publish(TOPIC_STATUS, JSON.stringify({
+    status: 'online', branchId: BRANCH_ID, pbxMode: PBX_MODE, timestamp: Date.now()
+  }), { retain: true, qos: 1 });
+
   // Subscribe to command topic
   mqttClient.subscribe(TOPIC_COMMAND, { qos: 1 }, (err) => {
     if (!err) {
-      logger.info(`Subscribed to topic: ${TOPIC_COMMAND}`);
+      logger.info(`[MQTT] Subscribed to: ${TOPIC_COMMAND}`);
     } else {
-      logger.error(`Failed to subscribe: ${err.message}`);
+      logger.error(`[MQTT] Subscribe error: ${err.message}`);
     }
   });
 });
 
 mqttClient.on('message', async (topic, message) => {
+  let roomNo, command, guestName;
   try {
-    logger.info(`Received message on ${topic}: ${message.toString()}`);
-    
-    // Extract room number from topic (e.g., hotel/branch_01/room/101/command)
+    logger.info(`[MQTT] ← Received: [${topic}] ${message.toString()}`);
+
+    // Extract room number จาก topic: hotel/branch-a/room/0101/command
     const parts = topic.split('/');
-    const roomNo = parts[3];
-    
+    roomNo = parts[3];
+
     const payload = JSON.parse(message.toString());
-    const command = payload.command; // 'ON' or 'OFF'
-    const guestName = payload.guestName || '';
-    
+    command   = (payload.command || '').toUpperCase();
+    guestName = payload.guestName || '';
+
+    // ─── Execute PBX Command ─────────────────────────────────────────────────
     if (command === 'ON') {
       await pbx.checkIn(roomNo, guestName);
-      logger.info(`Check-in command executed for room ${roomNo}`);
+      logger.info(`[PBX] ✅ CheckIn executed → Room ${roomNo}`);
     } else if (command === 'OFF') {
       await pbx.checkOut(roomNo);
-      logger.info(`Check-out command executed for room ${roomNo}`);
+      logger.info(`[PBX] ✅ CheckOut executed → Room ${roomNo}`);
     } else {
-      logger.warn(`Unknown command: ${command}`);
+      logger.warn(`[PBX] ⚠️  Unknown command: "${command}"`);
+      return;
     }
-    
-    // Publish success result back
+
+    // ─── Publish Result กลับ Backend ──────────────────────────────────────────
     const resultTopic = `hotel/${BRANCH_ID}/room/${roomNo}/result`;
-    mqttClient.publish(resultTopic, JSON.stringify({
+    const resultPayload = JSON.stringify({
       status: 'success',
       command,
-      timestamp: Date.now()
-    }), { qos: 1 });
-    
+      roomNo,
+      guestName,
+      pbxMode: PBX_MODE,
+      timestamp: Date.now(),
+    });
+    mqttClient.publish(resultTopic, resultPayload, { qos: 1 });
+    logger.info(`[MQTT] → Published result to ${resultTopic}`);
+
   } catch (error) {
-    logger.error(`Error processing MQTT message: ${error.message}`);
+    logger.error(`[Edge Agent] ❌ Error processing command for Room ${roomNo}: ${error.message}`);
+
+    // Publish failure result
+    if (roomNo) {
+      const failTopic = `hotel/${BRANCH_ID}/room/${roomNo}/result`;
+      mqttClient.publish(failTopic, JSON.stringify({
+        status: 'error',
+        command,
+        roomNo,
+        error: error.message,
+        timestamp: Date.now(),
+      }), { qos: 1 });
+    }
   }
 });
 
 mqttClient.on('error', (err) => {
-  logger.error(`MQTT Error: ${err.message}`);
+  logger.error(`[MQTT] ❌ Error: ${err.message}`);
 });
 
 mqttClient.on('offline', () => {
-  logger.warn('MQTT Client went offline. Reconnecting...');
+  logger.warn('[MQTT] ⚠️  Client offline — attempting reconnect...');
 });
 
-// Start the agent
+// ─── Start Edge Agent ─────────────────────────────────────────────────────────
+async function start() {
+  try {
+    await pbx.connect();
+    logger.info('[PBX] ✅ PBX Connector ready.');
+  } catch (error) {
+    logger.warn(`[PBX] ⚠️  Initial connect failed: ${error.message} — will retry automatically`);
+  }
+}
+
 start();
 
-// Handle graceful shutdown
+// ─── Graceful Shutdown ────────────────────────────────────────────────────────
 process.on('SIGINT', async () => {
-  logger.info('Shutting down Edge Agent...');
-  mqttClient.publish(TOPIC_STATUS, JSON.stringify({ status: 'offline', timestamp: Date.now() }), { retain: true, qos: 1 });
+  logger.info('\n[Edge Agent] Shutting down gracefully...');
+  mqttClient.publish(TOPIC_STATUS, JSON.stringify({
+    status: 'offline', branchId: BRANCH_ID, timestamp: Date.now()
+  }), { retain: true, qos: 1 });
   mqttClient.end();
   await pbx.disconnect();
   process.exit(0);

@@ -75,7 +75,7 @@ class StructuredLogger {
 // Global logger instance
 const logger = new StructuredLogger({
   serviceName: 'pbx-connector',
-  logFile: path.join(__dirname, '..', 'backend', 'structured.log'),
+  logFile: path.join(__dirname, 'structured.log'),
   logLevel: process.env.LOG_LEVEL || 'info',
 });
 

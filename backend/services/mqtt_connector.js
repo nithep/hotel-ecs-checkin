@@ -15,10 +15,10 @@ class MqttConnector extends EventEmitter {
         this.client = null;
         this.roomStates = new Map(); // Cache for getRoomStatus
         
-        // MQTT Broker Config
-        this.brokerUrl = process.env.MQTT_BROKER_URL || 'mqtts://your-hivemq-cluster-url:8883';
-        this.username = process.env.MQTT_USERNAME || 'hotel-cloud';
-        this.password = process.env.MQTT_PASSWORD || 'your-password';
+        // MQTT Broker Config (Fallback: Public HiveMQ for Dev/Test)
+        this.brokerUrl = process.env.MQTT_BROKER_URL || 'mqtt://broker.hivemq.com:1883';
+        this.username = process.env.MQTT_USERNAME || null;
+        this.password = process.env.MQTT_PASSWORD || null;
     }
 
     async connect() {
@@ -26,11 +26,12 @@ class MqttConnector extends EventEmitter {
         this.state = 'CONNECTING';
 
         return new Promise((resolve, reject) => {
-            this.client = mqtt.connect(this.brokerUrl, {
-                username: this.username,
-                password: this.password,
+            const mqttOptions = {
                 clientId: `cloud-backend-${this.branchId}-${Math.random().toString(16).substr(2, 8)}`,
-            });
+            };
+            if (this.username) mqttOptions.username = this.username;
+            if (this.password) mqttOptions.password = this.password;
+            this.client = mqtt.connect(this.brokerUrl, mqttOptions);
 
             this.client.on('connect', () => {
                 this.state = 'CONNECTED';
