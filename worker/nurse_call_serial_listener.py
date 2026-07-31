@@ -264,8 +264,65 @@ class NurseCallSerialListener:
             self._serial_conn.close()
         logger.info("[Edge Listener] ปิดการทำงานระบบ Listener")
 
+    def _run_tcp_listener(self, host: str = "192.168.1.91", port: int = 23):
+        """อ่านค่าจากตู้สาขา Phonik PBX ผ่านเครือข่าย LAN (TCP Socket Telnet Port 23)"""
+        import socket
+        logger.info(f"[TCP Listener] เริ่มต้นเชื่อมต่อตู้สาขา Phonik PBX ทาง LAN ที่ {host}:{port}...")
+        
+        while self.running:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.settimeout(10.0)
+                    s.connect((host, port))
+                    logger.info(f"[TCP Listener] ✅ เชื่อมต่อ Phonik PBX LAN ({host}:{port}) สำเร็จ!")
+                    
+                    buffer = ""
+                    while self.running:
+                        try:
+                            data = s.recv(1024).decode('ascii', errors='ignore')
+                            if not data:
+                                logger.warning("[TCP Listener] ⚠️ สัญญาณหลุดจากตู้ PBX (Connection Closed)")
+                                break
+                            buffer += data
+                            while "\n" in buffer:
+                                line, buffer = buffer.split("\n", 1)
+                                if line.strip():
+                                    self._process_raw_data(line)
+                        except socket.timeout:
+                            # ส่ง Ping Heartbeat เพื่อรักษาการเชื่อมต่อ
+                            s.sendall(b"..VERS=\r\n")
+                            time.sleep(0.5)
+            except Exception as e:
+                logger.error(f"[TCP Listener Error] ไม่สามารถเชื่อมต่อตู้สาขา ({host}:{port}): {e}")
+                time.sleep(5)  # Auto-Reconnect Loop
+
+    def export_vertex_ai_payload(self, event: Dict[str, Any]):
+        """สร้างไฟล์ JSON ขนาดเล็ก (Compact Payload) เก็บในคลาวด์สำหรับ Vertex AI Retrain/Inference"""
+        payload_dir = os.path.join(os.path.dirname(__file__), "vertex_ai_payloads")
+        os.makedirs(payload_dir, exist_ok=True)
+        
+        filename = f"event_{event['event_id']}.json"
+        filepath = os.path.join(payload_dir, filename)
+        
+        compact_payload = {
+            "evt_id": event["event_id"],
+            "rm": event["room_id"],
+            "bd": event.get("bed_id", "BED1"),
+            "lvl": event["emergency_level"],
+            "sla": event["sla_seconds"],
+            "ts": event["timestamp"],
+            "ai_tag": event.get("ai_analysis", {}).get("priority_tag", "NORMAL")
+        }
+        
+        try:
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(compact_payload, f, ensure_ascii=False)
+            logger.info(f"[Vertex AI Payload] 📦 สร้างไฟล์ JSON ขนาดเล็กส่งเตรียม Cloud/Vertex AI: {filename}")
+        except Exception as e:
+            logger.error(f"[Vertex AI Payload Error] บันทึกไฟล์ล้มเหลว: {e}")
+
     def _process_raw_data(self, raw_line: str):
-        """ประมวลผล Frame จาก Serial"""
+        """ประมวลผล Frame จาก Serial / TCP LAN"""
         parsed_event = PhonikNurseCallProtocolParser.parse_frame(raw_line)
         if not parsed_event:
             return
@@ -276,15 +333,15 @@ class NurseCallSerialListener:
         # 2. บันทึกลง SQLite Local Fallback
         self.db.save_event(enriched_event)
 
-        # 3. แสดงผลใน Nurse Station Console Log
+        # 3. สร้างไฟล์ JSON ขนาดเล็กสอดรับกับ Vertex AI
+        self.export_vertex_ai_payload(enriched_event)
+
+        # 4. แสดงผลใน Nurse Station Console Log
         logger.info(
             f"[NURSE CALL EVENT] ห้อง: {enriched_event['room_id']} ({enriched_event['bed_id']}) | "
             f"ประเภท: {enriched_event['event_type']} | "
             f"Level: {enriched_event['emergency_level']} | SLA: {enriched_event['sla_seconds']}s"
         )
-
-        # 4. จำลองการส่ง Push Notification (LINE / Webhook)
-        self._trigger_local_notification(enriched_event)
 
     def _trigger_local_notification(self, event: Dict[str, Any]):
         """ส่งการแจ้งเตือนไปยังระบบ Nurse Station / LINE Messaging API"""
@@ -295,7 +352,7 @@ class NurseCallSerialListener:
         while self.running:
             unsynced = self.db.get_unsynced_events(limit=10)
             if unsynced:
-                logger.info(f"[Cloud Sync] กำลัง Sync ข้อมูลค้างส่ง {len(unsynced)} รายการขึ้น GCP Pub/Sub...")
+                logger.info(f"[Cloud Sync] กำลัง Sync ข้อมูลค้างส่ง {len(unsynced)} รายการขึ้น GCP Pub/Sub/Cloud Storage...")
                 for evt in unsynced:
                     time.sleep(0.2)
                     self.db.mark_synced(evt["event_id"])
@@ -345,10 +402,32 @@ class NurseCallSerialListener:
 
 
 if __name__ == "__main__":
-    logger.info("=== Smart Nurse Call & Predictive Analytics - Edge Listener Test ===")
-    listener = NurseCallSerialListener(use_mock=True)
-    try:
-        listener.start()
-    except KeyboardInterrupt:
-        listener.stop()
-        logger.info("โปรแกรมหยุดการทำงานเรียบร้อยแล้ว")
+    mode = sys.argv[1] if len(sys.argv) > 1 else "tcp"
+    logger.info(f"=== Smart Nurse Call & Predictive Analytics - Edge Listener (Mode: {mode}) ===")
+    
+    if mode == "tcp":
+        listener = NurseCallSerialListener(use_mock=False)
+        listener.running = True
+        # รัน TCP Listener เชื่อมต่อตู้ PBX จริงผ่าน LAN
+        tcp_thread = threading.Thread(target=listener._run_tcp_listener, args=("192.168.1.91", 23), daemon=True)
+        tcp_thread.start()
+        
+        # เริ่ม Background Cloud Sync Worker Thread
+        sync_thread = threading.Thread(target=listener._cloud_sync_loop, name="CloudSyncWorker", daemon=True)
+        sync_thread.start()
+        
+        try:
+            while True:
+                time.sleep(1)
+        except KeyboardInterrupt:
+            listener.stop()
+            logger.info("โปรแกรมหยุดการทำงานเรียบร้อยแล้ว")
+    else:
+        listener = NurseCallSerialListener(use_mock=True)
+        try:
+            listener.start()
+        except KeyboardInterrupt:
+            listener.stop()
+            logger.info("โปรแกรมหยุดการทำงานเรียบร้อยแล้ว")
+
+
