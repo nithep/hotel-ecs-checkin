@@ -57,6 +57,8 @@ const LandingPage = () => {
   );
 };
 
+import NurseDashboard from './pages/NurseDashboard';
+
 function App() {
   return (
     <AuthProvider>
@@ -70,6 +72,9 @@ function App() {
 
           {/* Guest Binding Page (No Auth Required) */}
           <Route path="/bind" element={<GuestBinding />} />
+
+          {/* Nurse Call Station Dashboard (Public / Station Board) */}
+          <Route path="/nursecall" element={<NurseDashboard />} />
 
           {/* Unauthorized Page */}
           <Route path="/unauthorized" element={<Unauthorized />} />

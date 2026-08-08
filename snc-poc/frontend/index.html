@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Nurse Call (SNC) - Nurse Station Monitor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0f172a;
+            --card-bg: #1e293b;
+            --normal-green: #10b981;
+            --alert-red: #ef4444;
+            --ack-yellow: #f59e0b;
+            --text-light: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Prompt', sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Header Bar */
+        header {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(10px);
+            padding: 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .logo-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #3b82f6, #6366f1);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 14px;
+            border-radius: 20px;
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--normal-green);
+            font-size: 0.9rem;
+        }
+
+        .pulse-dot {
+            width: 10px;
+            height: 10px;
+            background-color: var(--normal-green);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--normal-green);
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(16, 185, 129, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        /* Container & Grid */
+        main {
+            padding: 2rem;
+            flex: 1;
+        }
+
+        .grid-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 1.5rem;
+        }
+
+        /* Room Cards */
+        .room-card {
+            background-color: var(--card-bg);
+            border-radius: 16px;
+            padding: 1.5rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+        }
+
+        .room-card.status-normal {
+            border-color: rgba(16, 185, 129, 0.3);
+        }
+
+        .room-card.status-emergency {
+            border-color: var(--alert-red);
+            background: linear-gradient(135deg, #1e293b, #450a0a);
+            animation: flash-red 1s infinite alternate;
+        }
+
+        .room-card.status-ack {
+            border-color: var(--ack-yellow);
+            background: linear-gradient(135deg, #1e293b, #451a03);
+        }
+
+        @keyframes flash-red {
+            0% { box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); }
+            100% { box-shadow: 0 0 35px rgba(239, 68, 68, 0.9); }
+        }
+
+        .room-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .room-number {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+
+        .room-state-text {
+            font-size: 0.85rem;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .status-normal .room-state-text { background: rgba(16, 185, 129, 0.2); color: var(--normal-green); }
+        .status-emergency .room-state-text { background: rgba(239, 68, 68, 0.3); color: #fca5a5; }
+        .status-ack .room-state-text { background: rgba(245, 158, 11, 0.3); color: #fde68a; }
+
+        .timer-display {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-ack {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white;
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+
+        .btn-ack:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .btn-normal {
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-muted);
+            cursor: default;
+            box-shadow: none;
+        }
+
+        /* Demo Controls */
+        .demo-bar {
+            margin-top: 2rem;
+            padding: 1rem 2rem;
+            background: var(--card-bg);
+            border-radius: 12px;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .btn-demo {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: none;
+            background: #3b82f6;
+            color: white;
+            font-weight: 500;
+            cursor: pointer;
+        }
+
+        /* KPI Summary Section */
+        .kpi-section {
+            margin-bottom: 2rem;
+            padding: 1.5rem 2rem;
+            background: var(--card-bg);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .kpi-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-light);
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .kpi-card {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1rem;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .kpi-label {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .kpi-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--normal-green);
+            margin-bottom: 0.25rem;
+        }
+
+        .kpi-target {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-title">
+            <div class="logo-icon">➕</div>
+            <div>
+                <h1>Smart Nurse Call (SNC)</h1>
+                <p style="font-size: 0.85rem; color: var(--text-muted);">Nurse Station Monitor Dashboard</p>
+            </div>
+        </div>
+        <div class="status-badge" id="connStatus">
+            <div class="pulse-dot"></div>
+            <span>Connected (Phonik PBX)</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- KPI Summary Section -->
+        <div class="kpi-section">
+            <div class="kpi-title">📊 ตัวชี้วัดประสิทธิภาพ (KPI Dashboard)</div>
+            <div class="kpi-grid" id="kpiSummary">
+                <div class="kpi-card">
+                    <div class="kpi-label">กำลังโหลดข้อมูล...</div>
+                    <div class="kpi-value">--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid-container" id="roomGrid">
+            <!-- Dynamic Room Cards Inserted Here -->
+        </div>
+
+        <div class="demo-bar" style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+            <span>🧪 จำลองสัญญาณเรียกฉุกเฉิน & เคลียร์สาย (SLA Simulation):</span>
+            <button class="btn-demo" style="background: #ef4444;" onclick="triggerSimulatedCall('0400', 'CALL_BEDSIDE')">🚨 กด STA (ห้อง 400)</button>
+            <button class="btn-demo" style="background: #dc2626;" onclick="triggerSimulatedCall('0400', 'CALL_BATHROOM_EMERGENCY')">🚿 ดึงสายห้องน้ำ (ห้อง 400)</button>
+            <button class="btn-demo" style="background: #f59e0b;" onclick="acknowledgeRoom('0400')">📞 พยาบาลยกหูรับสาย (Ack)</button>
+            <button class="btn-demo" style="background: #10b981;" onclick="clearRoom('0400')">✅ พยาบาลกดล้างสาย (Clear)</button>
+            <button class="btn-demo" style="background: #8b5cf6;" onclick="runFullSLADemo('0400')">⚡ ทดสอบ SLA ลูปอัตโนมัติ (Fast SLA Test)</button>
+        </div>
+    </main>
+
+    <script>
+        const rooms = [
+            { id: '0400', name: 'ห้อง 400', status: 'normal', timer: 0, timerInterval: null },
+            { id: '0401', name: 'ห้อง 401', status: 'normal', timer: 0, timerInterval: null },
+            { id: '0402', name: 'ห้อง 402', status: 'normal', timer: 0, timerInterval: null },
+            { id: '0403', name: 'ห้อง 403', status: 'normal', timer: 0, timerInterval: null },
+            { id: '0404', name: 'ห้อง 404', status: 'normal', timer: 0, timerInterval: null },
+            { id: '0405', name: 'ห้อง 405', status: 'normal', timer: 0, timerInterval: null }
+        ];
+
+        let socket = null;
+        let kpiData = null;
+
+        // Determine backend host dynamically (supports opening via local file, localhost, or Pi IP)
+        const BACKEND_HOST = (window.location.hostname && window.location.hostname !== '' && window.location.protocol !== 'file:') 
+            ? window.location.host 
+            : '192.168.1.94:8000'; // Default fallback to Pi 4 IP and backend port
+
+        function initWebSocket() {
+            socket = new WebSocket(`ws://${BACKEND_HOST}/ws/nurse-station`);
+
+            socket.onopen = () => {
+                console.log("Connected to Backend WebSocket");
+                document.getElementById("connStatus").innerHTML = `<div class="pulse-dot"></div><span>Connected (Phonik PBX)</span>`;
+            };
+
+            socket.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                console.log("WebSocket Event:", data);
+                if (data.extension && data.extension.roomId) {
+                    const roomId = data.extension.roomId;
+                    const eventType = data.payload ? data.payload[0].contentString : "";
+                    
+                    if (eventType === "CALL_TRIGGERED") {
+                        handleEmergencyCall(roomId);
+                    } else if (eventType === "ACKNOWLEDGED" || data.status === "acknowledged") {
+                        handleAcknowledge(roomId);
+                    } else if (eventType === "CALL_CLEARED" || data.status === "resolved") {
+                        clearRoom(roomId);
+                    }
+                }
+            };
+
+            socket.onclose = () => {
+                console.log("WebSocket Disconnected. Reconnecting...");
+                document.getElementById("connStatus").innerHTML = `<span style="color: #ef4444;">Disconnected (Retrying)</span>`;
+                setTimeout(initWebSocket, 3000);
+            };
+        }
+
+        async function loadKPIData() {
+            try {
+                const response = await fetch(`http://${BACKEND_HOST}/api/analytics/kpi`);
+                kpiData = await response.json();
+                updateKPIDisplay();
+            } catch (error) {
+                console.error("Failed to load KPI data:", error);
+            }
+        }
+
+        function updateKPIDisplay() {
+            if (!kpiData) return;
+            
+            const kpiContainer = document.getElementById("kpiSummary");
+            if (kpiContainer) {
+                kpiContainer.innerHTML = `
+                    <div class="kpi-card">
+                        <div class="kpi-label">ค่าเฉลี่ย Ack Time</div>
+                        <div class="kpi-value">${kpiData.avg_ack_time_seconds}s</div>
+                        <div class="kpi-target">เป้าหมาย: ≤ 30s</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">ค่าเฉลี่ย Resolution Time</div>
+                        <div class="kpi-value">${kpiData.avg_resolution_time_seconds}s</div>
+                        <div class="kpi-target">เป้าหมาย: ≤ 180s</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">SLA Compliance Rate</div>
+                        <div class="kpi-value">${kpiData.sla_compliance_rate}%</div>
+                        <div class="kpi-target">เป้าหมาย: ≥ 95%</div>
+                    </div>
+                `;
+            }
+        }
+
+        function renderGrid() {
+            const grid = document.getElementById("roomGrid");
+            grid.innerHTML = "";
+
+            rooms.forEach(room => {
+                const card = document.createElement("div");
+                card.className = `room-card status-${room.status}`;
+                card.id = `card-${room.id}`;
+
+                let statusLabel = "ปกติ";
+                let btnHtml = `<button class="btn-ack btn-normal">ปกติ</button>`;
+
+                if (room.status === "emergency") {
+                    statusLabel = "🚨 เรียกฉุกเฉิน!";
+                    btnHtml = `<button class="btn-ack" onclick="acknowledgeRoom('${room.id}')">กดรับเรื่อง (Acknowledge)</button>`;
+                } else if (room.status === "ack") {
+                    statusLabel = "⏳ พยาบาลกำลังคุย/รับเรื่อง";
+                    btnHtml = `<button class="btn-ack" style="background: #f59e0b;" onclick="clearRoom('${room.id}')">เคลียร์สถานะ (Clear)</button>`;
+                }
+
+                card.innerHTML = `
+                    <div class="room-header">
+                        <div class="room-number">${room.name}</div>
+                        <div class="room-state-text">${statusLabel}</div>
+                    </div>
+                    <div class="timer-display">
+                        ⏱️ เวลา: <span>${formatTimer(room.timer)}</span>
+                    </div>
+                    ${btnHtml}
+                `;
+                grid.appendChild(card);
+            });
+        }
+
+        function handleEmergencyCall(roomId) {
+            const room = rooms.find(r => r.id === roomId);
+            if (room && room.status !== "emergency") {
+                room.status = "emergency";
+                room.timer = 0;
+                if (room.timerInterval) clearInterval(room.timerInterval);
+                room.timerInterval = setInterval(() => {
+                    room.timer++;
+                    const timerElem = document.querySelector(`#card-${room.id} .timer-display span`);
+                    if (timerElem) timerElem.innerText = formatTimer(room.timer);
+                }, 1000);
+                playAlarmSound();
+                renderGrid();
+            }
+        }
+
+        function acknowledgeRoom(roomId) {
+            fetch(`http://${BACKEND_HOST}/api/events/acknowledge/${roomId}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    handleAcknowledge(roomId);
+                    // Reload KPI after acknowledgment
+                    loadKPIData();
+                });
+        }
+
+        function handleAcknowledge(roomId) {
+            const room = rooms.find(r => r.id === roomId);
+            if (room) {
+                room.status = "ack";
+                renderGrid();
+            }
+        }
+
+        function clearRoom(roomId) {
+            fetch(`http://${BACKEND_HOST}/api/events/clear/${roomId}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    const room = rooms.find(r => r.id === roomId);
+                    if (room) {
+                        room.status = "normal";
+                        if (room.timerInterval) clearInterval(room.timerInterval);
+                        room.timer = 0;
+                        renderGrid();
+                        // Reload KPI after clearing
+                        loadKPIData();
+                    }
+                });
+        }
+
+        function formatTimer(seconds) {
+            const mins = Math.floor(seconds / 60).toString().padStart(2, '0');
+            const secs = (seconds % 60).toString().padStart(2, '0');
+            return `${mins}:${secs}`;
+        }
+
+        function playAlarmSound() {
+            // Web Audio API Beep
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                osc.type = "sawtooth";
+                osc.frequency.setValueAtTime(880, ctx.currentTime); // A5
+                osc.connect(ctx.destination);
+                osc.start();
+                osc.stop(ctx.currentTime + 0.5);
+            } catch (e) {
+                console.log("Audio play blocked");
+            }
+        }
+
+        function triggerSimulatedCall(roomId, eventType = "CALL_BEDSIDE") {
+            fetch(`http://${BACKEND_HOST}/api/events/trigger`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ room_id: roomId, event_type: eventType })
+            });
+        }
+
+        async function runFullSLADemo(roomId) {
+            console.log("Starting SLA Full Cycle Simulation...");
+            // Step 1: Trigger Call
+            triggerSimulatedCall(roomId, "CALL_BEDSIDE");
+            
+            // Step 2: Acknowledge after 5 seconds
+            setTimeout(() => {
+                console.log("Simulating Acknowledge (Ack Time ~ 5s)");
+                acknowledgeRoom(roomId);
+            }, 5000);
+
+            // Step 3: Clear after 12 seconds
+            setTimeout(() => {
+                console.log("Simulating Resolution Clear (Resolution Time ~ 12s)");
+                clearRoom(roomId);
+            }, 12000);
+        }
+
+        // Load KPI data on startup and refresh every 30 seconds
+        renderGrid();
+        initWebSocket();
+        loadKPIData();
+        setInterval(loadKPIData, 30000);
+    </script>
+</body>
+</html>

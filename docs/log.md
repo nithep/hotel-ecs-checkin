@@ -34,6 +34,6 @@ timestamp: "2026-06-28T02:00:00+07:00"
 | **2026-07-20** | ทำ Vault Distillation (OKF): สกัดเอกสารประกาศและผลกระทบของข้อกำหนด LINE MINI App IAP (July 2026) เป็น [[wiki/line-mini-app-iap-terms|การวิเคราะห์ข้อกำหนดการใช้งานและการซื้อภายในแอป LINE MINI App]] และบันทึกข้อมูลดิบใน archive | Librarian (Antigravity) |
 | **2026-07-23** | ทำ Vault Distillation (OKF): สกัด 6 ไฟล์ดิบใน `/docs/raw` เป็น Evergreen Notes 3 ไฟล์ ([[wiki/gemini-3-6-flash-antigravity|Gemini 3.6 Flash]], [[wiki/google-workspace-compliance-hipaa|Google Workspace Compliance & HIPAA]], [[wiki/build-in-public-content-strategy|Build in Public Strategy]]), ย้ายไฟล์ดิบไป `/docs/raw/archive/` และทำการเชื่อมโยง OKF Wiki Links ทั้ง Vault | Librarian (Antigravity) |
 | **2026-07-23** | สร้าง Skill [[.agents/skills/Librarian_OKF_Protocol/SKILL.md|Librarian_OKF_Protocol]] กำหนดตรรกะบรรณารักษ์ให้ Qoder/Agents, ทำความสะอาดลบไฟล์ขยะที่ Workspace Root และย้ายไฟล์คู่มือ 11 รายการเข้าสู่ `/docs/wiki/` | Librarian (Antigravity) |
-
-
+| **2026-08-02** | ทำ Vault Distillation (OKF): สกัดเอกสาร `HECS Walkthrough` และ `Smart Check-in QR` เข้าสู่ `/docs/wiki/`, ย้ายไฟล์ดิบไป archive, ย้าย `SETUP_QUICKSTART.md` จาก Root เข้าสู่ `/docs/wiki/setup_quickstart.md`, ลบไฟล์ขยะที่ Root, และอัปเดตดัชนี Knowledge Graph `docs/index.md` สำเร็จ 100% | Librarian Agent (Antigravity) |
+| **2026-08-02** | สรุปบทสนทนาประเมินสถาปัตยกรรม Hybrid Edge (Pi Zero 2 W) และการวิเคราะห์ Phonik ASCII Protocol (`EMG0101=BATH`) พร้อมอัปเดต Timeline บันทึกประวัติเตรียมทดสอบกดฮาร์ดแวร์จริง | Antigravity |
 
